@@ -1,6 +1,6 @@
-package cn.bugstack.ai.infrastructure.ssh;
+package cn.bugstack.ai.infrastructure.adapter.port;
 
-import cn.bugstack.ai.domain.ssh.adapter.session.ISshSessionService;
+import cn.bugstack.ai.domain.ssh.adapter.port.ISshSessionPort;
 import com.jcraft.jsch.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Slf4j
 @Component
-public class SshSessionManager implements ISshSessionService {
+public class SshSessionPort implements ISshSessionPort {
 
     private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
     private final JSch jsch = new JSch();

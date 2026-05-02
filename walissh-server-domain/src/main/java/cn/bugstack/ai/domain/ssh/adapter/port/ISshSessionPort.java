@@ -1,10 +1,10 @@
-package cn.bugstack.ai.domain.ssh.adapter.session;
+package cn.bugstack.ai.domain.ssh.adapter.port;
 
 /**
  * SSH 会话服务接口
  * 用于建立/断开 SSH 连接
  */
-public interface ISshSessionService {
+public interface ISshSessionPort {
 
     /**
      * 建立 SSH 连接

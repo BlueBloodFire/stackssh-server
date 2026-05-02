@@ -1,7 +1,6 @@
-package cn.bugstack.ai.infrastructure.terminal;
+package cn.bugstack.ai.infrastructure.adapter.port;
 
-import cn.bugstack.ai.domain.ssh.adapter.session.ISshSessionService;
-import cn.bugstack.ai.domain.ssh.adapter.terminal.ITerminalSessionService;
+import cn.bugstack.ai.domain.ssh.adapter.port.ITerminalSessionPort;
 import com.jcraft.jsch.ChannelShell;
 import com.jcraft.jsch.Session;
 import lombok.extern.slf4j.Slf4j;
@@ -23,10 +22,10 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 @Component
-public class TerminalSessionManager implements ITerminalSessionService {
+public class TerminalSessionPort implements ITerminalSessionPort {
 
     @Resource
-    private ISshSessionService sshSessionService;
+    private SshSessionPort sshSessionService;
 
     /** sessionId -> Shell 通道 */
     private final Map<String, ChannelShell> channels = new ConcurrentHashMap<>();

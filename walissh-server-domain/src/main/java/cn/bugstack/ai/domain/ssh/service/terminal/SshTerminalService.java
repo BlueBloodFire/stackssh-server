@@ -1,7 +1,7 @@
 package cn.bugstack.ai.domain.ssh.service.terminal;
 
-import cn.bugstack.ai.domain.ssh.adapter.session.ISshSessionService;
-import cn.bugstack.ai.domain.ssh.adapter.terminal.ITerminalSessionService;
+import cn.bugstack.ai.domain.ssh.adapter.port.ISshSessionPort;
+import cn.bugstack.ai.domain.ssh.adapter.port.ITerminalSessionPort;
 import cn.bugstack.ai.domain.ssh.model.entity.TerminalSessionEntity;
 import cn.bugstack.ai.domain.ssh.service.ISshTerminalService;
 import lombok.extern.slf4j.Slf4j;
@@ -21,14 +21,14 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class SshTerminalService implements ISshTerminalService {
 
-    private final ISshSessionService sshSessionService;
-    private final ITerminalSessionService terminalSessionService;
+    private final ISshSessionPort sshSessionService;
+    private final ITerminalSessionPort terminalSessionService;
 
     /** 会话ID -> 终端会话实体 映射 */
     private final Map<String, TerminalSessionEntity> sessionCache = new ConcurrentHashMap<>();
 
-    public SshTerminalService(ISshSessionService sshSessionService,
-                              ITerminalSessionService terminalSessionService) {
+    public SshTerminalService(ISshSessionPort sshSessionService,
+                              ITerminalSessionPort terminalSessionService) {
         this.sshSessionService = sshSessionService;
         this.terminalSessionService = terminalSessionService;
     }

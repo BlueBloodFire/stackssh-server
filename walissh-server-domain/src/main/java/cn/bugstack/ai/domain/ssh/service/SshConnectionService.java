@@ -1,7 +1,7 @@
 package cn.bugstack.ai.domain.ssh.service;
 
 import cn.bugstack.ai.domain.ssh.adapter.repository.ISshConnectionRepository;
-import cn.bugstack.ai.domain.ssh.adapter.session.ISshSessionService;
+import cn.bugstack.ai.domain.ssh.adapter.port.ISshSessionPort;
 import cn.bugstack.ai.domain.ssh.model.entity.SshConnectionEntity;
 import cn.bugstack.ai.domain.ssh.model.entity.SshConnectionConfigEntity;
 import cn.bugstack.ai.domain.ssh.model.valobj.ConnectionStatusEnum;
@@ -21,9 +21,9 @@ import java.util.UUID;
 public class SshConnectionService implements ISshConnectionDomainService {
 
     private final ISshConnectionRepository repository;
-    private final ISshSessionService sshSessionService;
+    private final ISshSessionPort sshSessionService;
 
-    public SshConnectionService(ISshConnectionRepository repository, ISshSessionService sshSessionService) {
+    public SshConnectionService(ISshConnectionRepository repository, ISshSessionPort sshSessionService) {
         this.repository = repository;
         this.sshSessionService = sshSessionService;
     }

@@ -1,4 +1,4 @@
-package cn.bugstack.ai.domain.ssh.adapter.terminal;
+package cn.bugstack.ai.domain.ssh.adapter.port;
 
 /**
  * 终端会话服务接口
@@ -6,7 +6,7 @@ package cn.bugstack.ai.domain.ssh.adapter.terminal;
  *
  * @author waissh dev
  */
-public interface ITerminalSessionService {
+public interface ITerminalSessionPort {
 
     /**
      * 打开终端会话
