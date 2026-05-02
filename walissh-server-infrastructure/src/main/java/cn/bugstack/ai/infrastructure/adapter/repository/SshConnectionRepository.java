@@ -9,6 +9,7 @@ import cn.bugstack.ai.infrastructure.dao.ISshConnectionConfigDAO;
 import cn.bugstack.ai.infrastructure.dao.ISshConnectionDAO;
 import cn.bugstack.ai.infrastructure.dao.po.SshConnectionConfigPO;
 import cn.bugstack.ai.infrastructure.dao.po.SshConnectionPO;
+import cn.bugstack.ai.infrastructure.security.PasswordEncryptor;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Repository;
 
@@ -27,6 +28,8 @@ public class SshConnectionRepository implements ISshConnectionRepository {
     private ISshConnectionDAO sshConnectionDAO;
     @Resource
     private ISshConnectionConfigDAO sshConnectionConfigDAO;
+
+    private final PasswordEncryptor passwordEncryptor = new PasswordEncryptor();
 
     @Override
     public void saveConnection(SshConnectionEntity entity) {
@@ -70,6 +73,20 @@ public class SshConnectionRepository implements ISshConnectionRepository {
     // ========== Entity <-> PO 转换 ==========
 
     private SshConnectionPO toPO(SshConnectionEntity entity) {
+        // 加密密码和私钥
+        String encryptedPassword = entity.getPassword();
+        String encryptedPrivateKey = entity.getPrivateKey();
+        Integer encryptedFlag = entity.getEncrypted();
+
+        if (encryptedPassword != null && !encryptedPassword.isEmpty() && !passwordEncryptor.isEncrypted(encryptedPassword)) {
+            encryptedPassword = passwordEncryptor.encrypt(encryptedPassword);
+            encryptedFlag = 1;
+        }
+        if (encryptedPrivateKey != null && !encryptedPrivateKey.isEmpty() && !passwordEncryptor.isEncrypted(encryptedPrivateKey)) {
+            encryptedPrivateKey = passwordEncryptor.encrypt(encryptedPrivateKey);
+            encryptedFlag = 1;
+        }
+
         return SshConnectionPO.builder()
                 .id(entity.getId())
                 .connectionId(entity.getConnectionId())
@@ -78,9 +95,9 @@ public class SshConnectionRepository implements ISshConnectionRepository {
                 .port(entity.getPort())
                 .username(entity.getUsername())
                 .authType(entity.getAuthType() != null ? entity.getAuthType().getCode() : AuthTypeEnum.PASSWORD.getCode())
-                .password(entity.getPassword())
-                .privateKey(entity.getPrivateKey())
-                .encrypted(entity.getEncrypted())
+                .password(encryptedPassword)
+                .privateKey(encryptedPrivateKey)
+                .encrypted(encryptedFlag)
                 .status(entity.getStatus() != null ? entity.getStatus().getCode() : ConnectionStatusEnum.DISCONNECTED.getCode())
                 .userId(entity.getUserId())
                 .createdAt(entity.getCreatedAt())
@@ -89,6 +106,19 @@ public class SshConnectionRepository implements ISshConnectionRepository {
     }
 
     private SshConnectionEntity toEntity(SshConnectionPO po) {
+        // 解密密码和私钥
+        String password = po.getPassword();
+        String privateKey = po.getPrivateKey();
+
+        if (po.getEncrypted() != null && po.getEncrypted() == 1) {
+            if (password != null && !password.isEmpty()) {
+                password = passwordEncryptor.decrypt(password);
+            }
+            if (privateKey != null && !privateKey.isEmpty()) {
+                privateKey = passwordEncryptor.decrypt(privateKey);
+            }
+        }
+
         return SshConnectionEntity.builder()
                 .id(po.getId())
                 .connectionId(po.getConnectionId())
@@ -97,8 +127,8 @@ public class SshConnectionRepository implements ISshConnectionRepository {
                 .port(po.getPort())
                 .username(po.getUsername())
                 .authType(AuthTypeEnum.fromCode(po.getAuthType()))
-                .password(po.getPassword())
-                .privateKey(po.getPrivateKey())
+                .password(password)
+                .privateKey(privateKey)
                 .encrypted(po.getEncrypted())
                 .status(ConnectionStatusEnum.fromCode(po.getStatus()))
                 .userId(po.getUserId())
