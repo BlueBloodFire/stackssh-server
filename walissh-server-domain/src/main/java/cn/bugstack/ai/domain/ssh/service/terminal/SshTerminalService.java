@@ -42,7 +42,16 @@ public class SshTerminalService implements ISshTerminalService {
             throw new IllegalStateException("SSH连接未建立，请先连接");
         }
 
-        // 2. 通过基础设施层打开终端会话
+        // 2. 清理同一 connectionId 的旧会话（基础设施层已关闭 channel，这里清理域层缓存）
+        sessionCache.entrySet().removeIf(entry -> {
+            if (connectionId.equals(entry.getValue().getConnectionId())) {
+                log.info("清理旧终端会话缓存 sessionId={} connectionId={}", entry.getKey(), connectionId);
+                return true;
+            }
+            return false;
+        });
+
+        // 3. 通过基础设施层打开终端会话
         String sessionId = terminalSessionService.openTerminal(connectionId, cols, rows);
 
         // 3. 创建并缓存会话实体

@@ -36,7 +36,8 @@ public class SshTerminalController {
             TerminalSessionEntity entity = sshTerminalDomainService.openTerminal(
                     requestDTO.getConnectionId(), cols, rows);
 
-            // 等待初始输出（shell 欢迎信息 + prompt），最多等 2 秒
+            // 等待 MOTD 积累完后 drain 缓冲区，作为 initialOutput 返回
+            // 这样前端不依赖轮询获取初始输出，避免时序问题导致"有时显示有时不显示"
             String initialOutput = waitForInitialOutput(entity.getSessionId(), 2000);
 
             TerminalOpenResponseDTO response = TerminalOpenResponseDTO.builder()
@@ -66,33 +67,25 @@ public class SshTerminalController {
     }
 
     /**
-     * 等待 Shell 初始输出
-     * Shell 启动后需要一点时间发送 MOTD + prompt，这里轮询等待
+     * 等待并收集 Shell 初始输出（Last login + MOTD + prompt）
+     * openTerminal 已等首数据+200ms，这里只需 drain 缓冲区
+     * 不做换行符转换，xterm.js 自己处理 \r 和 \n
      */
     private String waitForInitialOutput(String sessionId, long timeoutMs) {
-        StringBuilder result = new StringBuilder();
-        long deadline = System.currentTimeMillis() + timeoutMs;
-
-        try {
-            while (System.currentTimeMillis() < deadline) {
-                String chunk = sshTerminalDomainService.readTerminal(sessionId);
-                if (chunk != null && !chunk.isEmpty()) {
-                    result.append(chunk);
-                    // 拿到数据后再等 200ms，确保 prompt 完整
-                    Thread.sleep(200);
-                    String more = sshTerminalDomainService.readTerminal(sessionId);
-                    if (more != null && !more.isEmpty()) {
-                        result.append(more);
-                    }
-                    break;
-                }
-                Thread.sleep(100);
-            }
-        } catch (InterruptedException ignored) {
-            Thread.currentThread().interrupt();
+        // drain 缓冲区：openTerminal 已等待首数据+200ms，MOTD 应该已完整
+        String output = sshTerminalDomainService.readTerminal(sessionId);
+        if (output == null || output.isEmpty()) {
+            return "";
         }
 
-        return result.toString();
+        // 额外 drain 一次，确保残余数据也拿到
+        try { Thread.sleep(50); } catch (InterruptedException ignored) {}
+        String more = sshTerminalDomainService.readTerminal(sessionId);
+        if (more != null && !more.isEmpty()) {
+            output += more;
+        }
+
+        return output;
     }
 
     @RequestMapping(value = "exec", method = RequestMethod.POST)

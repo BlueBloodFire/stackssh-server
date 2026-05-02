@@ -12,7 +12,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 终端会话管理器
@@ -42,8 +41,18 @@ public class TerminalSessionPort implements ITerminalSessionPort {
     /** sessionId -> 读取线程是否存活 */
     private final Map<String, Boolean> readerAlive = new ConcurrentHashMap<>();
 
+    /** connectionId -> 当前活跃的 sessionId（一个连接只允许一个终端会话） */
+    private final Map<String, String> activeConnectionSession = new ConcurrentHashMap<>();
+
     @Override
     public String openTerminal(String connectionId, int cols, int rows) {
+        // 同一 connectionId 只允许一个终端会话，先关闭旧的
+        String oldSessionId = activeConnectionSession.get(connectionId);
+        if (oldSessionId != null) {
+            log.info("关闭旧终端会话以避免重复 connectionId={} oldSessionId={}", connectionId, oldSessionId);
+            cleanup(oldSessionId);
+        }
+
         String sessionId = UUID.randomUUID().toString().replace("-", "");
 
         try {
@@ -65,9 +74,31 @@ public class TerminalSessionPort implements ITerminalSessionPort {
             inputStreams.put(sessionId, in);
             outputStreams.put(sessionId, out);
             outputBuffers.put(sessionId, new StringBuilder());
+            activeConnectionSession.put(connectionId, sessionId);
 
             // 启动输出读取线程，持续读取 shell 输出到缓冲区
             startOutputReader(sessionId, in);
+
+            // 等待 Shell 首次输出到达 + 额外等待让 MOTD 完整积累
+            // 然后消费缓冲区，作为 initialOutput 返回给前端
+            // 这样前端不再依赖轮询获取初始输出，彻底解决"有时显示有时不显示"的问题
+            StringBuilder buffer = outputBuffers.get(sessionId);
+            long waitDeadline = System.currentTimeMillis() + 3000; // 最多等 3s 等首数据
+            try {
+                // 阶段1：等首数据到达
+                while (System.currentTimeMillis() < waitDeadline) {
+                    synchronized (buffer) {
+                        if (buffer.length() > 0) {
+                            break;
+                        }
+                    }
+                    Thread.sleep(30);
+                }
+                // 阶段2：额外等 200ms 让 MOTD/prompt 完整到达
+                Thread.sleep(200);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
 
             log.info("终端会话打开成功 sessionId={} connectionId={}", sessionId, connectionId);
             return sessionId;
@@ -79,6 +110,10 @@ public class TerminalSessionPort implements ITerminalSessionPort {
         }
     }
 
+    /** 输入重试次数 */
+    private static final int WRITE_MAX_RETRIES = 2;
+
+    /** Write with retry on I/O failure */
     @Override
     public void write(String sessionId, String command) {
         OutputStream out = outputStreams.get(sessionId);
@@ -86,13 +121,30 @@ public class TerminalSessionPort implements ITerminalSessionPort {
             throw new IllegalArgumentException("终端会话不存在或已关闭 sessionId=" + sessionId);
         }
 
-        try {
-            out.write(command.getBytes(StandardCharsets.UTF_8));
-            out.flush();
-        } catch (IOException e) {
-            log.error("写入终端失败 sessionId={}", sessionId, e);
-            throw new RuntimeException("写入终端失败: " + e.getMessage(), e);
+        IOException lastError = null;
+        for (int attempt = 1; attempt <= WRITE_MAX_RETRIES; attempt++) {
+            try {
+                out.write(command.getBytes(StandardCharsets.UTF_8));
+                out.flush();
+                return; // 成功
+            } catch (IOException e) {
+                lastError = e;
+                log.warn("写入终端失败 (attempt={}/{}) sessionId={} reason={}",
+                        attempt, WRITE_MAX_RETRIES, sessionId, e.getMessage());
+                // 最后一次重试后抛出异常
+                if (attempt == WRITE_MAX_RETRIES) {
+                    break;
+                }
+                // 短暂等待后重试
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+            }
         }
+        log.error("写入终端失败 (已重试 {} 次) sessionId={}", WRITE_MAX_RETRIES, sessionId, lastError);
+        throw new RuntimeException("写入终端失败: " + lastError.getMessage(), lastError);
     }
 
     @Override
@@ -104,13 +156,10 @@ public class TerminalSessionPort implements ITerminalSessionPort {
 
         Boolean alive = readerAlive.get(sessionId);
         if (alive != null && !alive) {
-            // 读取线程已退出，检查 channel 是否还活着
             ChannelShell channel = channels.get(sessionId);
             if (channel == null || !channel.isConnected()) {
-                // Channel 已断开，返回断开标记让前端感知
                 return "\u001b[31m\r\n[连接已断开]\u001b[0m\r\n";
             }
-            // Channel 还在但线程退了（罕见），尝试重启读取线程
             InputStream in = inputStreams.get(sessionId);
             if (in != null) {
                 log.info("尝试重启终端读取线程 sessionId={}", sessionId);
@@ -118,35 +167,12 @@ public class TerminalSessionPort implements ITerminalSessionPort {
             }
         }
 
-        // 智能等待：最多等待 500ms，有数据时额外等 50ms 让数据积累
-        long deadline = System.currentTimeMillis() + 500;
-        try {
-            while (System.currentTimeMillis() < deadline) {
-                synchronized (buffer) {
-                    if (buffer.length() > 0) {
-                        // 已有数据，等待 50ms 积累更多
-                        TimeUnit.MILLISECONDS.sleep(50);
-                        String output = buffer.toString();
-                        buffer.setLength(0);
-                        return output;
-                    }
-                }
-
-                // 检查读取线程是否仍在运行
-                alive = readerAlive.get(sessionId);
-                if (alive != null && !alive) {
-                    // 线程刚退出，返回空（下次 read 会走上面的断开检测）
-                    return "";
-                }
-
-                TimeUnit.MILLISECONDS.sleep(20);
-            }
-        } catch (InterruptedException ignored) {
-            Thread.currentThread().interrupt();
-        }
-
-        // 超时，返回当前缓冲区内容
+        // 非阻塞：直接返回缓冲区当前内容，不等
+        // 前端轮询本身就是等待机制，不需要后端再等
         synchronized (buffer) {
+            if (buffer.length() == 0) {
+                return "";
+            }
             String output = buffer.toString();
             buffer.setLength(0);
             return output;
@@ -185,6 +211,8 @@ public class TerminalSessionPort implements ITerminalSessionPort {
 
     /**
      * 启动输出读取线程
+     * SocketTimeoutException 时继续循环（不是真正的断连），
+     * 只有 EOF（-1）或真正的 IOException 才退出
      */
     private void startOutputReader(String sessionId, InputStream in) {
         readerAlive.put(sessionId, true);
@@ -203,7 +231,26 @@ public class TerminalSessionPort implements ITerminalSessionPort {
                 }
                 // in.read() 返回 -1，说明 shell channel EOF
                 log.warn("终端 Shell Channel EOF sessionId={}", sessionId);
+            } catch (java.net.SocketTimeoutException e) {
+                // SocketTimeout 不是断连，重试即可——但实际不应到这里了（setTimeout(0)）
+                // 保留作为防御性处理
+                log.debug("终端读取超时（非断连），继续读取 sessionId={}", sessionId);
+                InputStream inRef = inputStreams.get(sessionId);
+                if (inRef != null) {
+                    startOutputReader(sessionId, inRef);
+                }
+                return; // 当前线程退出，新线程已接替
             } catch (IOException e) {
+                ChannelShell ch = channels.get(sessionId);
+                // channel 还活着说明不是真正的断连，可能是临时 I/O 问题，尝试重启
+                if (ch != null && ch.isConnected()) {
+                    log.warn("终端读取I/O异常但channel仍连接，重启reader sessionId={} reason={}", sessionId, e.getMessage());
+                    InputStream inRef = inputStreams.get(sessionId);
+                    if (inRef != null) {
+                        startOutputReader(sessionId, inRef);
+                    }
+                    return;
+                }
                 log.debug("终端输出读取异常 sessionId={} reason={}", sessionId, e.getMessage());
             } finally {
                 readerAlive.put(sessionId, false);
@@ -232,6 +279,9 @@ public class TerminalSessionPort implements ITerminalSessionPort {
      * 清理资源
      */
     private void cleanup(String sessionId) {
+        // 清理 connectionId -> sessionId 映射
+        activeConnectionSession.entrySet().removeIf(e -> sessionId.equals(e.getValue()));
+
         try {
             OutputStream out = outputStreams.remove(sessionId);
             if (out != null) out.close();
@@ -248,6 +298,7 @@ public class TerminalSessionPort implements ITerminalSessionPort {
         }
 
         outputBuffers.remove(sessionId);
+        readerAlive.remove(sessionId);
     }
 
 }
