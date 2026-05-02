@@ -1,5 +1,5 @@
 spring:
   config:
-    name: ai-agent-scaffold-lite-app
+    name: walissh-server
   profiles:
     active: dev
