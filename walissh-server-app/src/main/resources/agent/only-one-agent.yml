@@ -11,22 +11,22 @@ ai:
           module:
             ai-api:
               base-url: https://apis.itedus.cn
-              api-key: sk-fmiyy7T5MNlCVV059d07Af9194C041EfA8F137B4A86c6189
+              api-key: sk-IWpcS35fanJ2txV10453F9E167C84e9b968cA924Fc34Af6d
               completions-path: v1/chat/completions
               embeddings-path: v1/embeddings
             chat-model:
               model: gpt-4.1
-              tool-mcp-list:
-                - sse:
-                    name: baidu-search
-                    base-uri: http://appbuilder.baidu.com/v2/ai_search/mcp/
-                    sse-endpoint: sse?api_key=bce-v3/ALTAK-WjK8NIh3txZo7rXXEjhri/e2f09d53de961bcaf2609b76c7c7a7e6d0f05da3
-                    request-timeout: 500000
-                - local:
-                    name: myToolCallbackProvider
-              tool-skills-list:
-                - type: resource
-                  path: agent/skills
+#              tool-mcp-list:
+#                - sse:
+#                    name: baidu-search
+#                    base-uri: http://appbuilder.baidu.com/v2/ai_search/mcp/
+#                    sse-endpoint: sse?api_key=bce-v3/ALTAK-WjK8NIh3txZo7rXXEjhri/e2f09d53de961bcaf2609b76c7c7a7e6d0f05da3
+#                    request-timeout: 500000
+#                - local:
+#                    name: myToolCallbackProvider
+#              tool-skills-list:
+#                - type: resource
+#                  path: agent/skills
 
 #                - type: directory
 #                  path: /Users/fuzhengwei/coding/gitcode/KnowledgePlanet/ai-agent-scaffold/ai-agent-scaffold-lite/docs/dev-ops/agent/skills

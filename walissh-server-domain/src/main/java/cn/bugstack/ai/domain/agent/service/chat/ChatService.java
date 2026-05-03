@@ -6,6 +6,8 @@ import cn.bugstack.ai.domain.agent.model.valobj.AiAgentRegisterVO;
 import cn.bugstack.ai.domain.agent.model.valobj.properties.AiAgentAutoConfigProperties;
 import cn.bugstack.ai.domain.agent.service.IChatService;
 import cn.bugstack.ai.domain.agent.service.armory.factory.DefaultArmoryFactory;
+import cn.bugstack.ai.domain.agent.service.armory.matter.mcp.server.SshExecuteAdkTool;
+import cn.bugstack.ai.domain.agent.service.armory.matter.mcp.server.SshExecuteMcpService;
 import cn.bugstack.ai.types.enums.ResponseCode;
 import cn.bugstack.ai.types.exception.AppException;
 import com.google.adk.events.Event;
@@ -32,6 +34,9 @@ public class ChatService implements IChatService {
 
     @Resource
     private AiAgentAutoConfigProperties aiAgentAutoConfigProperties;
+
+    @Resource
+    private SshExecuteAdkTool sshExecuteAdkTool;
 
     private final Map<String, String> userSessions = new ConcurrentHashMap<>();
 
@@ -105,6 +110,11 @@ public class ChatService implements IChatService {
 
     @Override
     public Flowable<Event> handleMessageStream(String agentId, String userId, String sessionId, String message) {
+        return handleMessageStream(agentId, userId, sessionId, message, null);
+    }
+
+    @Override
+    public Flowable<Event> handleMessageStream(String agentId, String userId, String sessionId, String message, String terminalSessionId) {
         AiAgentRegisterVO aiAgentRegisterVO = defaultArmoryFactory.getAiAgentRegisterVO(agentId);
 
         if (null == aiAgentRegisterVO) {
@@ -113,11 +123,19 @@ public class ChatService implements IChatService {
 
         InMemoryRunner runner = aiAgentRegisterVO.getRunner();
 
+        // 设置终端会话ID到ThreadLocal，供 MCP 工具使用
+        if (terminalSessionId != null && !terminalSessionId.isEmpty()) {
+            log.info("设置终端会话ID: {}", terminalSessionId);
+            SshExecuteAdkTool.setCurrentTerminalSession(terminalSessionId);
+            SshExecuteMcpService.setCurrentTerminalSession(terminalSessionId);
+        }
+
         Content userMsg = Content.fromParts(Part.fromText(message));
-        return runner.runAsync(userId, sessionId, userMsg);
+        Flowable<Event> events = runner.runAsync(userId, sessionId, userMsg);
+
+        return events;
     }
 
-    @Override
     public List<String> handleMessage(ChatCommandEntity chatCommandEntity) {
         AiAgentRegisterVO aiAgentRegisterVO = defaultArmoryFactory.getAiAgentRegisterVO(chatCommandEntity.getAgentId());
 

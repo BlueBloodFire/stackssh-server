@@ -66,12 +66,15 @@ public class ChatModelNode extends AbstractArmorySupport {
             }
         }
 
-        // 构建对话模型
+        // 将工具列表保存到 DynamicContext，供 AgentNode 使用
+        dynamicContext.setToolCallbacks(toolCallbackList);
+        log.info("共加载 {} 个工具", toolCallbackList.size());
+
+        // 构建对话模型（不传工具，由 AgentNode 直接传递）
         ChatModel chatModel = OpenAiChatModel.builder()
                 .openAiApi(openAiApi)
                 .defaultOptions(OpenAiChatOptions.builder()
                         .model(chatModelConfig.getModel())
-                        .toolCallbacks(toolCallbackList)
                         .build())
                 .build();
 

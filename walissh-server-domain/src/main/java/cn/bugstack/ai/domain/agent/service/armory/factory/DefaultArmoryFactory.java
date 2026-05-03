@@ -13,6 +13,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 
@@ -24,7 +25,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 默认的装配工厂
  *
  * @author xiaofuge bugstack.cn @小傅哥
- * 2025/12/17 08:16
  */
 @Service
 public class DefaultArmoryFactory {
@@ -61,6 +61,11 @@ public class DefaultArmoryFactory {
          * LLM ChatModel
          */
         private ChatModel chatModel;
+
+        /**
+         * MCP 工具回调列表
+         */
+        private List<ToolCallback> toolCallbacks;
 
         /**
          * 智能体配置组

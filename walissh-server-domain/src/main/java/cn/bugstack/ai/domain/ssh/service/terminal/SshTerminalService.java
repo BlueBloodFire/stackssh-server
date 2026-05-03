@@ -71,9 +71,15 @@ public class SshTerminalService implements ISshTerminalService {
         return entity;
     }
 
+    /** Agent 执行命令后等待输出的最大时间（ms） */
+    private static final long COMMAND_EXEC_WAIT_MS = 2000;
+
+    /** Agent 执行命令后等待输出的检查间隔（ms） */
+    private static final long COMMAND_EXEC_CHECK_INTERVAL_MS = 50;
+
     @Override
     public String executeCommand(String sessionId, String command) {
-        log.debug("执行命令 sessionId={} command={}", sessionId, command);
+        log.info("Agent执行命令 sessionId={} command={}", sessionId, command);
 
         // 1. 校验会话
         TerminalSessionEntity entity = sessionCache.get(sessionId);
@@ -81,15 +87,69 @@ public class SshTerminalService implements ISshTerminalService {
             throw new IllegalArgumentException("终端会话不存在或已关闭");
         }
 
-        // 2. 写入命令
-        terminalSessionService.write(sessionId, command);
+        // 2. 先清空缓冲区中残留的旧输出（如 prompt 等）
+        terminalSessionService.read(sessionId);
 
-        // 3. 更新活跃时间
+        // 3. 回显命令到终端：模拟用户输入效果（\r\n + 命令 + \n 触发执行）
+        // 这样在终端面板上能看到独立的一行命令
+        String echoLine = "\r\n" + command + "\n";
+        terminalSessionService.write(sessionId, echoLine);
+
+        // 4. 更新活跃时间
         entity.touch();
 
-        // 4. 读取输出
-        String output = terminalSessionService.read(sessionId);
-        log.debug("命令执行完成 sessionId={} outputLength={}", sessionId, output.length());
+        // 5. 等待命令执行完成：轮询等待输出到达或超时
+        // shell 命令执行需要时间，不能立即 read
+        long deadline = System.currentTimeMillis() + COMMAND_EXEC_WAIT_MS;
+        StringBuilder resultOutput = new StringBuilder();
+        
+        try {
+            // 先短暂等待 shell 处理命令
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        // 循环读取，直到有输出或超时（检测到 prompt 返回说明命令执行完了）
+        while (System.currentTimeMillis() < deadline) {
+            String chunk = terminalSessionService.read(sessionId);
+            if (chunk != null && !chunk.isEmpty()) {
+                resultOutput.append(chunk);
+            }
+            // 如果输出中包含了 prompt 特征（如 $ 或 # 结尾），说明命令已执行完
+            String current = resultOutput.toString();
+            if (current.contains("$") || current.contains("#")) {
+                // 再等一小段时间确保输出完整
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                // 最后再读一次残留
+                String finalChunk = terminalSessionService.read(sessionId);
+                if (finalChunk != null && !finalChunk.isEmpty()) {
+                    resultOutput.append(finalChunk);
+                }
+                break;
+            }
+            try {
+                Thread.sleep(COMMAND_EXEC_CHECK_INTERVAL_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        // 如果还没读到输出，最后再尝试读一次
+        if (resultOutput.isEmpty()) {
+            String finalChunk = terminalSessionService.read(sessionId);
+            if (finalChunk != null && !finalChunk.isEmpty()) {
+                resultOutput.append(finalChunk);
+            }
+        }
+
+        String output = resultOutput.toString();
+        log.info("命令执行完成 sessionId={} outputLength={}", sessionId, output.length());
 
         return output;
     }
