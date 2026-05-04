@@ -40,6 +40,10 @@
             <groupId>cn.bugstack.ai</groupId>
             <artifactId>walissh-server-domain</artifactId>
         </dependency>
+        <dependency>
+            <groupId>cn.bugstack.ai</groupId>
+            <artifactId>walissh-server-case</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

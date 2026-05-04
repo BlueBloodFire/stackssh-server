@@ -42,4 +42,9 @@ public class AiAgentRegisterVO {
      */
     private InMemoryRunner runner;
 
+    /**
+     * LLM ChatModel（用于直接调用模型，绕过 ADK 工具自动执行）
+     */
+    private org.springframework.ai.chat.model.ChatModel chatModel;
+
 }

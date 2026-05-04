@@ -3,6 +3,7 @@ package cn.bugstack.ai.trigger.http;
 import cn.bugstack.ai.api.IAgentService;
 import cn.bugstack.ai.api.dto.*;
 import cn.bugstack.ai.api.response.Response;
+import cn.bugstack.ai.cases.IAIAgentReActServiceCase;
 import cn.bugstack.ai.domain.agent.model.valobj.AiAgentConfigTableVO;
 import cn.bugstack.ai.domain.agent.service.IChatService;
 import cn.bugstack.ai.types.enums.ResponseCode;
@@ -28,6 +29,9 @@ public class AgentServiceController implements IAgentService {
 
     @Resource
     private IChatService chatService;
+
+    @Resource
+    private IAIAgentReActServiceCase reactServiceCase;
 
     @RequestMapping(value = "query_ai_agent_config_list", method = RequestMethod.GET)
     @Override
@@ -142,42 +146,26 @@ public class AgentServiceController implements IAgentService {
     @RequestMapping(value = "chat_stream", method = RequestMethod.POST)
     @Override
     public ResponseBodyEmitter chatStream(@RequestBody ChatRequestDTO requestDTO) {
-        ResponseBodyEmitter emitter = new ResponseBodyEmitter(3 * 60 * 1000L);
         try {
-            log.info("流式对话 agentId:{} userId:{} sessionId:{} terminalSessionId:{} message:{}", 
-                    requestDTO.getAgentId(), requestDTO.getUserId(), requestDTO.getSessionId(), 
+            log.info("ReAct 流式对话 agentId:{} userId:{} sessionId:{} terminalSessionId:{} message:{}",
+                    requestDTO.getAgentId(), requestDTO.getUserId(), requestDTO.getSessionId(),
                     requestDTO.getTerminalSessionId(), requestDTO.getMessage());
-            
-            // 如果未指定sessionId，先创建
+
+            // 如果未指定 sessionId，先创建
             String sessionId = requestDTO.getSessionId();
             if (sessionId == null || sessionId.isEmpty()) {
                 sessionId = chatService.createSession(requestDTO.getAgentId(), requestDTO.getUserId());
+                requestDTO.setSessionId(sessionId);
             }
-            
-            // 传递终端会话ID
-            chatService.handleMessageStream(
-                    requestDTO.getAgentId(), 
-                    requestDTO.getUserId(), 
-                    sessionId, 
-                    requestDTO.getMessage(),
-                    requestDTO.getTerminalSessionId())
-                    .subscribe(
-                            event -> {
-                                try {
-                                    emitter.send(event.stringifyContent());
-                                } catch (Exception e) {
-                                    log.error("流式对话发送失败", e);
-                                    emitter.completeWithError(e);
-                                }
-                            },
-                            emitter::completeWithError,
-                            emitter::complete
-                    );
+
+            // 路由到 ReAct 服务（Case 层）
+            return reactServiceCase.chatStream(requestDTO);
         } catch (Exception e) {
-            log.error("流式对话失败", e);
+            log.error("ReAct 流式对话失败", e);
+            ResponseBodyEmitter emitter = new ResponseBodyEmitter();
             emitter.completeWithError(e);
+            return emitter;
         }
-        return emitter;
     }
 
 }

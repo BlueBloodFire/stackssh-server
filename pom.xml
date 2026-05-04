@@ -201,6 +201,11 @@
       </dependency>
       <dependency>
         <groupId>cn.bugstack.ai</groupId>
+        <artifactId>walissh-server-case</artifactId>
+        <version>1.0</version>
+      </dependency>
+      <dependency>
+        <groupId>cn.bugstack.ai</groupId>
         <artifactId>walissh-server-types</artifactId>
         <version>1.0</version>
       </dependency>
@@ -287,5 +292,6 @@
     <module>walissh-server-trigger</module>
     <module>walissh-server-infrastructure</module>
     <module>walissh-server-types</module>
+      <module>walissh-server-case</module>
   </modules>
 </project>

@@ -49,6 +49,7 @@ public class RunnerNode extends AbstractArmorySupport {
                 .agentName(agentName)
                 .agentDesc(agentDesc)
                 .runner(runner)
+                .chatModel(dynamicContext.getChatModel())
                 .build();
 
         // 注册到 Spring 容器
