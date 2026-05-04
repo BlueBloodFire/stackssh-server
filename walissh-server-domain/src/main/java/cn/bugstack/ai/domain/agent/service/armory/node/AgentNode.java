@@ -46,29 +46,29 @@ public class AgentNode extends AbstractArmorySupport {
                     .instruction(agentConfig.getInstruction())
                     .outputKey(agentConfig.getOutputKey());
 
-//            // 构建 ADK 工具列表
-//            List<Object> adkTools = new ArrayList<>();
-//
-//            // 添加 SSH 执行工具（ADK 原生 FunctionTool）
-//            try {
-//                log.info("开始创建 SSH 执行工具, sshExecuteAdkTool={}", sshExecuteAdkTool);
-//                FunctionTool sshTool = FunctionTool.create(sshExecuteAdkTool, "executeCommand");
-//                log.info("FunctionTool 创建成功: name={}, declaration={}",
-//                        sshTool.name(),
-//                        sshTool.declaration().isPresent() ? sshTool.declaration().get() : "null");
-//                adkTools.add(sshTool);
-//                log.info("为 Agent [{}] 注册 SSH 执行工具成功", agentConfig.getName());
-//            } catch (Exception e) {
-//                log.error("创建 SSH ADK 工具失败", e);
-//            }
-//
-//            // 注册工具到 Agent
-//            if (!adkTools.isEmpty()) {
-//                log.info("为 Agent [{}] 注册 {} 个工具", agentConfig.getName(), adkTools.size());
-//                builder.tools(adkTools);
-//            } else {
-//                log.warn("Agent [{}] 没有注册任何工具！", agentConfig.getName());
-//            }
+            // 构建 ADK 工具列表
+            List<Object> adkTools = new ArrayList<>();
+
+            // 添加 SSH 执行工具（ADK 原生 FunctionTool）
+            try {
+                log.info("开始创建 SSH 执行工具, sshExecuteAdkTool={}", sshExecuteAdkTool);
+                FunctionTool sshTool = FunctionTool.create(sshExecuteAdkTool, "executeCommand");
+                log.info("FunctionTool 创建成功: name={}, declaration={}",
+                        sshTool.name(),
+                        sshTool.declaration().isPresent() ? sshTool.declaration().get() : "null");
+                adkTools.add(sshTool);
+                log.info("为 Agent [{}] 注册 SSH 执行工具成功", agentConfig.getName());
+            } catch (Exception e) {
+                log.error("创建 SSH ADK 工具失败", e);
+            }
+
+            // 注册工具到 Agent
+            if (!adkTools.isEmpty()) {
+                log.info("为 Agent [{}] 注册 {} 个工具", agentConfig.getName(), adkTools.size());
+                builder.tools(adkTools);
+            } else {
+                log.warn("Agent [{}] 没有注册任何工具！", agentConfig.getName());
+            }
 
             LlmAgent llmAgent = builder.build();
             

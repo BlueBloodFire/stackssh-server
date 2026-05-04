@@ -125,7 +125,8 @@ public class ToolCallNode extends AbstractAIAgentReActSupport {
                                        List<Map<String, Object>> toolCalls,
                                        List<Map<String, Object>> toolResults) {
 
-        // 为每个 toolCall 关联其结果
+        // ADK runner 内部已管理对话历史（自动执行工具 + 追加 FunctionResponse）
+        // 这里只做日志记录，不重复追加消息到 history
         Map<String, Map<String, Object>> resultMap = new HashMap<>();
         for (Map<String, Object> result : toolResults) {
             String id = (String) result.get("id");
@@ -134,7 +135,6 @@ public class ToolCallNode extends AbstractAIAgentReActSupport {
             }
         }
 
-        // 遍历工具调用，关联结果
         for (Map<String, Object> toolCall : toolCalls) {
             String toolCallId = (String) toolCall.get("id");
             String toolName = (String) toolCall.get("name");
@@ -142,12 +142,16 @@ public class ToolCallNode extends AbstractAIAgentReActSupport {
             Map<String, Object> matchedResult = resultMap.get(toolCallId);
             if (matchedResult != null) {
                 String content = (String) matchedResult.get("content");
-                log.info("工具结果关联: id={}, name={}, result_length={}",
+                log.info("ADK 工具结果: id={}, name={}, result_length={}",
                         toolCallId, toolName, content != null ? content.length() : 0);
             } else {
                 log.warn("未找到工具结果: id={}, name={}", toolCallId, toolName);
             }
         }
+
+        // 清除本轮工具调用标记，避免重复路由
+        // 注意：toolResults 保留，供 UserFeedbackNode 构建最终结果
+        dynamicContext.getCurrentToolCalls().clear();
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -263,17 +267,17 @@ public class ToolCallNode extends AbstractAIAgentReActSupport {
 
         Object error = result.get("error");
         if (error != null && !error.toString().isEmpty()) {
-            if (sb.length() > 0) sb.append("\n");
+            if (!sb.isEmpty()) sb.append("\n");
             sb.append("[ERROR] ").append(error);
         }
 
         Object exitCode = result.get("exitCode");
         if (exitCode != null) {
-            if (sb.length() > 0) sb.append("\n");
+            if (!sb.isEmpty()) sb.append("\n");
             sb.append("[Exit code: ").append(exitCode).append("]");
         }
 
-        return sb.length() > 0 ? sb.toString() : "Command executed with no output";
+        return !sb.isEmpty() ? sb.toString() : "Command executed with no output";
     }
 
     // ═══════════════════════════════════════════════════════════════

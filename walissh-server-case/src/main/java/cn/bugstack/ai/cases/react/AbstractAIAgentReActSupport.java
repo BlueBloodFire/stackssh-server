@@ -4,8 +4,6 @@ import cn.bugstack.ai.api.dto.ChatRequestDTO;
 import cn.bugstack.ai.api.dto.ReActEventDTO;
 import cn.bugstack.ai.api.dto.ReActResultDTO;
 import cn.bugstack.ai.cases.react.factory.DefaultReActFactory;
-import cn.bugstack.ai.domain.agent.model.valobj.AiAgentRegisterVO;
-import cn.bugstack.ai.domain.agent.service.armory.factory.DefaultArmoryFactory;
 import cn.bugstack.wrench.design.framework.tree.AbstractMultiThreadStrategyRouter;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,8 +14,6 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 import javax.annotation.Resource;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -51,10 +47,14 @@ public abstract class AbstractAIAgentReActSupport extends AbstractMultiThreadStr
 
     protected final ObjectMapper objectMapper = new ObjectMapper();
 
-    /** 会话 → 终端会话 ID 映射 */
+    /**
+     * 会话 → 终端会话 ID 映射
+     */
     protected static final Map<String, String> sessionTerminalMapping = new ConcurrentHashMap<>();
 
-    /** 当前线程绑定的终端会话 ID */
+    /**
+     * 当前线程绑定的终端会话 ID
+     */
     protected static final InheritableThreadLocal<String> currentTerminalSession = new InheritableThreadLocal<>();
 
     @Override
@@ -132,7 +132,8 @@ public abstract class AbstractAIAgentReActSupport extends AbstractMultiThreadStr
             event.setEvent("text");
             event.setContent(content);
             event.setFullText(fullText);
-            emitter.send(objectMapper.writeValueAsString(event));
+            emitter.send(objectMapper.writeValueAsString(event) + "\n");
+            log.info("发送文本事件 {}", event);
         } catch (Exception e) {
             log.warn("发送文本事件失败: {}", e.getMessage());
         }
@@ -148,7 +149,8 @@ public abstract class AbstractAIAgentReActSupport extends AbstractMultiThreadStr
             event.setToolCallId(toolCallId);
             event.setToolName(toolName);
             event.setStatus(status);
-            emitter.send(objectMapper.writeValueAsString(event));
+            emitter.send(objectMapper.writeValueAsString(event) + "\n");
+            log.info("发送工具调用事件 {}", event);
         } catch (Exception e) {
             log.warn("发送工具调用事件失败: {}", e.getMessage());
         }
@@ -164,7 +166,8 @@ public abstract class AbstractAIAgentReActSupport extends AbstractMultiThreadStr
             event.setToolCallId(toolCallId);
             event.setContent(content);
             event.setStatus(status);
-            emitter.send(objectMapper.writeValueAsString(event));
+            emitter.send(objectMapper.writeValueAsString(event) + "\n");
+            log.info("发送工具结果事件 {}", event);
         } catch (Exception e) {
             log.warn("发送工具结果事件失败: {}", e.getMessage());
         }
@@ -184,7 +187,8 @@ public abstract class AbstractAIAgentReActSupport extends AbstractMultiThreadStr
             ReActEventDTO event = new ReActEventDTO();
             event.setEvent("round_end");
             event.setStepInfo(stepInfo);
-            emitter.send(objectMapper.writeValueAsString(event));
+            emitter.send(objectMapper.writeValueAsString(event) + "\n");
+            log.info("发送 round_end 事件 {}", event);
         } catch (Exception e) {
             log.warn("发送 round_end 事件失败: {}", e.getMessage());
         }
@@ -198,7 +202,8 @@ public abstract class AbstractAIAgentReActSupport extends AbstractMultiThreadStr
             ReActEventDTO event = new ReActEventDTO();
             event.setEvent("done");
             event.setContent(objectMapper.writeValueAsString(result));
-            emitter.send(objectMapper.writeValueAsString(event));
+            emitter.send(objectMapper.writeValueAsString(event) + "\n");
+            log.info("发送 done 事件 {}", event);
         } catch (Exception e) {
             log.warn("发送 done 事件失败: {}", e.getMessage());
         }

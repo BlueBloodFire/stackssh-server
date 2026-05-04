@@ -1,6 +1,7 @@
 package cn.bugstack.ai.domain.agent.model.valobj;
 
 import com.google.adk.runner.InMemoryRunner;
+import com.google.adk.runner.Runner;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -40,7 +41,7 @@ public class AiAgentRegisterVO {
     /**
      * 智能体执行对象
      */
-    private InMemoryRunner runner;
+    private Runner runner;
 
     /**
      * LLM ChatModel（用于直接调用模型，绕过 ADK 工具自动执行）

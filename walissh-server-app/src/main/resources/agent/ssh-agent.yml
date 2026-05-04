@@ -17,9 +17,9 @@ ai:
             chat-model:
               model: gpt-5.1
               # MCP 工具配置
-              tool-mcp-list:
-                - local:
-                    name: sshToolCallbackProvider
+#              tool-mcp-list:
+#                - local:
+#                    name: sshToolCallbackProvider
                 # 可选：百度搜索（用于查找安装方法、解决方案）
                 # - sse:
                 #     name: baidu-search
