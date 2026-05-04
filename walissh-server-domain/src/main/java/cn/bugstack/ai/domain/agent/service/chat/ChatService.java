@@ -6,7 +6,7 @@ import cn.bugstack.ai.domain.agent.model.valobj.AiAgentRegisterVO;
 import cn.bugstack.ai.domain.agent.model.valobj.properties.AiAgentAutoConfigProperties;
 import cn.bugstack.ai.domain.agent.service.IChatService;
 import cn.bugstack.ai.domain.agent.service.armory.factory.DefaultArmoryFactory;
-import cn.bugstack.ai.domain.agent.service.armory.matter.mcp.server.SshExecuteAdkTool;
+import cn.bugstack.ai.domain.agent.service.armory.matter.tools.SshExecuteAdkTool;
 import cn.bugstack.ai.domain.agent.service.armory.matter.mcp.server.SshExecuteMcpService;
 import cn.bugstack.ai.types.enums.ResponseCode;
 import cn.bugstack.ai.types.exception.AppException;

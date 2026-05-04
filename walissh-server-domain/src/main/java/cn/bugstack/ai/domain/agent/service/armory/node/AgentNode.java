@@ -5,8 +5,7 @@ import cn.bugstack.ai.domain.agent.model.valobj.AiAgentConfigTableVO;
 import cn.bugstack.ai.domain.agent.model.valobj.AiAgentRegisterVO;
 import cn.bugstack.ai.domain.agent.service.armory.AbstractArmorySupport;
 import cn.bugstack.ai.domain.agent.service.armory.factory.DefaultArmoryFactory;
-import cn.bugstack.ai.domain.agent.service.armory.matter.mcp.server.SshExecuteAdkTool;
-import cn.bugstack.ai.domain.agent.service.armory.matter.patch.SpringAiToAdkToolConverter;
+import cn.bugstack.ai.domain.agent.service.armory.matter.tools.SshExecuteAdkTool;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import com.google.adk.agents.LlmAgent;
 import com.google.adk.models.springai.SpringAI;
@@ -35,7 +34,6 @@ public class AgentNode extends AbstractArmorySupport {
         log.info("Ai Agent 装配操作 - AgentNode");
 
         ChatModel chatModel = dynamicContext.getChatModel();
-        List<ToolCallback> toolCallbacks = dynamicContext.getToolCallbacks();
 
         AiAgentConfigTableVO aiAgentConfigTableVO = requestParameter.getAiAgentConfigTableVO();
         List<AiAgentConfigTableVO.Module.Agent> agents = aiAgentConfigTableVO.getModule().getAgents();

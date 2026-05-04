@@ -38,6 +38,12 @@ public class TerminalSessionPort implements ITerminalSessionPort {
     /** sessionId -> 未读输出缓冲区 */
     private final Map<String, StringBuilder> outputBuffers = new ConcurrentHashMap<>();
 
+    /** sessionId -> Agent 专用缓冲区（不受前端轮询影响） */
+    private final Map<String, StringBuilder> agentBuffers = new ConcurrentHashMap<>();
+
+    /** sessionId -> 是否开启 Agent 捕获模式 */
+    private final Map<String, Boolean> agentCaptureMode = new ConcurrentHashMap<>();
+
     /** sessionId -> 读取线程是否存活 */
     private final Map<String, Boolean> readerAlive = new ConcurrentHashMap<>();
 
@@ -74,6 +80,8 @@ public class TerminalSessionPort implements ITerminalSessionPort {
             inputStreams.put(sessionId, in);
             outputStreams.put(sessionId, out);
             outputBuffers.put(sessionId, new StringBuilder());
+            agentBuffers.put(sessionId, new StringBuilder());
+            agentCaptureMode.put(sessionId, false);
             activeConnectionSession.put(connectionId, sessionId);
 
             // 启动输出读取线程，持续读取 shell 输出到缓冲区
@@ -180,6 +188,37 @@ public class TerminalSessionPort implements ITerminalSessionPort {
     }
 
     @Override
+    public void setAgentCapture(String sessionId, boolean capture) {
+        StringBuilder agentBuffer = agentBuffers.get(sessionId);
+        if (agentBuffer != null) {
+            synchronized (agentBuffer) {
+                // 开启捕获前先清空旧内容
+                if (capture) {
+                    agentBuffer.setLength(0);
+                }
+            }
+        }
+        agentCaptureMode.put(sessionId, capture);
+        log.debug("Agent 捕获模式: sessionId={}, capture={}", sessionId, capture);
+    }
+
+    @Override
+    public String readAgentBuffer(String sessionId) {
+        StringBuilder agentBuffer = agentBuffers.get(sessionId);
+        if (agentBuffer == null) {
+            return "";
+        }
+        synchronized (agentBuffer) {
+            if (agentBuffer.length() == 0) {
+                return "";
+            }
+            String output = agentBuffer.toString();
+            agentBuffer.setLength(0);
+            return output;
+        }
+    }
+
+    @Override
     public void resize(String sessionId, int cols, int rows) {
         ChannelShell channel = channels.get(sessionId);
         if (channel == null || !channel.isConnected()) {
@@ -226,6 +265,14 @@ public class TerminalSessionPort implements ITerminalSessionPort {
                     if (buffer != null) {
                         synchronized (buffer) {
                             buffer.append(text);
+                        }
+                    }
+                    // 如果开启了 Agent 捕获模式，同时写入 agent 专用缓冲区
+                    StringBuilder agentBuffer = agentBuffers.get(sessionId);
+                    Boolean capture = agentCaptureMode.get(sessionId);
+                    if (agentBuffer != null && Boolean.TRUE.equals(capture)) {
+                        synchronized (agentBuffer) {
+                            agentBuffer.append(text);
                         }
                     }
                 }
@@ -298,6 +345,8 @@ public class TerminalSessionPort implements ITerminalSessionPort {
         }
 
         outputBuffers.remove(sessionId);
+        agentBuffers.remove(sessionId);
+        agentCaptureMode.remove(sessionId);
         readerAlive.remove(sessionId);
     }
 

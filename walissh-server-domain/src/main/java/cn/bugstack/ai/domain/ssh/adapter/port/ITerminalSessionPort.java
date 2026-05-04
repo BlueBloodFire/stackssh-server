@@ -35,6 +35,23 @@ public interface ITerminalSessionPort {
     String read(String sessionId);
 
     /**
+     * 为 Agent 专用读取开启/关闭捕获模式
+     * 开启后，输出会被同时写入主缓冲区和 agent 专用缓冲区
+     *
+     * @param sessionId 会话ID
+     * @param capture   true=开启捕获, false=关闭捕获
+     */
+    void setAgentCapture(String sessionId, boolean capture);
+
+    /**
+     * 读取 Agent 专用缓冲区内容（并清空）
+     *
+     * @param sessionId 会话ID
+     * @return Agent 专用缓冲区内容
+     */
+    String readAgentBuffer(String sessionId);
+
+    /**
      * 调整终端大小
      *
      * @param sessionId 会话ID

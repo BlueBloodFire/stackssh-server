@@ -1,13 +1,13 @@
-package cn.bugstack.ai.domain.agent.service.armory.matter.mcp.server;
+package cn.bugstack.ai.domain.agent.service.armory.matter.tools;
 
 import cn.bugstack.ai.domain.ssh.service.ISshTerminalService;
 import com.google.adk.tools.Annotations.Schema;
-import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
@@ -25,8 +25,11 @@ public class SshExecuteAdkTool {
     @Resource
     private ISshTerminalService sshTerminalService;
 
-    // 当前会话绑定的终端会话 ID（通过 ThreadLocal 传递）
-    private static final ThreadLocal<String> currentTerminalSession = new ThreadLocal<>();
+    // 会话ID -> 终端会话ID 映射（支持异步线程访问）
+    private static final ConcurrentHashMap<String, String> sessionTerminalMapping = new ConcurrentHashMap<>();
+    
+    // 当前线程的终端会话 ID（使用 InheritableThreadLocal 支持异步线程继承）
+    private static final InheritableThreadLocal<String> currentTerminalSession = new InheritableThreadLocal<>();
 
     // 危险命令模式（需要用户确认）
     private static final Pattern DANGEROUS_PATTERN = Pattern.compile(
@@ -35,10 +38,12 @@ public class SshExecuteAdkTool {
     );
 
     /**
-     * 设置当前线程的终端会话 ID
+     * 设置当前线程的终端会话 ID（兼容旧接口）
      */
     public static void setCurrentTerminalSession(String terminalSessionId) {
         currentTerminalSession.set(terminalSessionId);
+        log.info("[ThreadLocal] 设置终端会话: thread={}, terminalSession={}", 
+                Thread.currentThread().getName(), terminalSessionId);
     }
 
     /**
@@ -46,6 +51,37 @@ public class SshExecuteAdkTool {
      */
     public static void clearCurrentTerminalSession() {
         currentTerminalSession.remove();
+    }
+    
+    /**
+     * 设置会话的终端会话 ID（基于 sessionId，支持异步）
+     * @param sessionId 对话会话ID
+     * @param terminalSessionId 终端会话ID
+     */
+    public static void setTerminalSession(String sessionId, String terminalSessionId) {
+        if (sessionId != null && terminalSessionId != null) {
+            sessionTerminalMapping.put(sessionId, terminalSessionId);
+            log.info("[SessionMapping] 绑定终端会话: chatSession={}, terminalSession={}", sessionId, terminalSessionId);
+        }
+    }
+
+    /**
+     * 获取会话的终端会话 ID
+     * @param sessionId 对话会话ID
+     * @return 终端会话ID
+     */
+    public static String getTerminalSession(String sessionId) {
+        return sessionId != null ? sessionTerminalMapping.get(sessionId) : null;
+    }
+
+    /**
+     * 清除会话的终端会话绑定
+     * @param sessionId 对话会话ID
+     */
+    public static void clearTerminalSession(String sessionId) {
+        if (sessionId != null) {
+            sessionTerminalMapping.remove(sessionId);
+        }
     }
 
     /**
@@ -58,9 +94,14 @@ public class SshExecuteAdkTool {
             @Schema(name = "command", description = "要执行的 Shell 命令，如: ls -la, apt install docker.io, docker --version")
             String command) {
         
+        // 优先从 ThreadLocal 获取，支持异步线程继承
         String terminalSessionId = currentTerminalSession.get();
         
+        log.info("[executeCommand] thread={}, terminalSessionId={}, command={}", 
+                Thread.currentThread().getName(), terminalSessionId, command);
+        
         if (terminalSessionId == null || terminalSessionId.isEmpty()) {
+            log.warn("[executeCommand] 终端会话ID为空，无法执行命令");
             return Map.of(
                     "success", false,
                     "output", "未绑定 SSH 终端会话。请先打开 SSH 终端连接。",
@@ -70,6 +111,7 @@ public class SshExecuteAdkTool {
 
         // 检查会话是否存在
         if (!sshTerminalService.sessionExists(terminalSessionId)) {
+            log.warn("[executeCommand] 终端会话不存在: {}", terminalSessionId);
             return Map.of(
                     "success", false,
                     "output", "SSH 终端会话不存在或已关闭: " + terminalSessionId,
@@ -91,6 +133,9 @@ public class SshExecuteAdkTool {
             
             // 执行命令
             String output = sshTerminalService.executeCommand(terminalSessionId, command);
+            
+            log.info("SSH 命令执行完成: outputLength={}, output={}", 
+                    output.length(), output.length() > 300 ? output.substring(0, 300) + "..." : output);
             
             // 分析输出，判断是否成功
             boolean success = isExecutionSuccessful(output);

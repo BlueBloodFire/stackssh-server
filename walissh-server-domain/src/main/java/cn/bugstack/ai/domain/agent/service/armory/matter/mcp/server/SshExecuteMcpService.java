@@ -26,7 +26,8 @@ public class SshExecuteMcpService {
     private ISshTerminalService sshTerminalService;
 
     // 当前会话绑定的终端会话 ID（通过 ThreadLocal 传递）
-    private static final ThreadLocal<String> currentTerminalSession = new ThreadLocal<>();
+    // 使用 InheritableThreadLocal 支持异步线程继承
+    private static final InheritableThreadLocal<String> currentTerminalSession = new InheritableThreadLocal<>();
 
     // 危险命令模式（需要用户确认）
     private static final Pattern DANGEROUS_PATTERN = Pattern.compile(
