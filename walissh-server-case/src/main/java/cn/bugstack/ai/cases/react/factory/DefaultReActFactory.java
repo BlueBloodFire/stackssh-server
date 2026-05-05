@@ -162,6 +162,14 @@ public class DefaultReActFactory {
         private boolean useAnthropicFormat;
 
         // ══════════════════════════════════════════════════════════
+        //  上下文记忆（Phase 1: 动态 Prompt 构建）
+        // ══════════════════════════════════════════════════════════
+
+        /** 最近执行的命令记录（用于注入到动态 Prompt 中） */
+        @Builder.Default
+        private List<String> recentCommands = new ArrayList<>();
+
+        // ══════════════════════════════════════════════════════════
         //  辅助方法
         // ══════════════════════════════════════════════════════════
 
@@ -217,6 +225,14 @@ public class DefaultReActFactory {
         public void appendUserConfirmationMessage(String question) {
             String content = "User interaction required: " + question;
             appendMessage(Map.of("role", "user", "content", content));
+        }
+
+        public void addRecentCommand(String command) {
+            if (command == null || command.trim().isEmpty()) return;
+            recentCommands.add(command.trim());
+            while (recentCommands.size() > 20) {
+                recentCommands.remove(0);
+            }
         }
 
     }
