@@ -20,16 +20,16 @@ public class LLMIntentClassifier implements IIntentClassifier {
     
     private ChatModel chatModel;
 
-    @Value("${app.config.api-host}")
+    @Value("${intent-ai-api.base-url}")
     private String apiHost;
 
-    @Value("${app.config.api-key}")
+    @Value("${intent-ai-api.api-key}")
     private String apiKey;
 
-    @Value("${app.config.completions-path:v1/chat/completions}")
+    @Value("${intent-ai-api.completions-path}")
     private String completionsPath;
 
-    @Value("${app.config.model:gpt-4.1}")
+    @Value("${intent-ai-api.chat-model.model}")
     private String model;
 
     @PostConstruct

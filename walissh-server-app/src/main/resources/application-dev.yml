@@ -36,6 +36,15 @@ spring:
     connection-timeout: 30000 #数据库连接超时时间,默认30秒，即30000
     connection-test-query: SELECT 1
 
+# AI API Configuration (意图识别专属配置)
+intent-ai-api:
+  base-url: https://apis.itedus.cn
+  api-key: sk-IWpcS35fanJ2txV10453F9E167C84e9b968cA924Fc34Af6d
+  completions-path: v1/chat/completions
+  embeddings-path: v1/embeddings
+  chat-model:
+    model: gpt-5.1
+
 # MyBatis 配置
 mybatis:
   mapper-locations: classpath:/mybatis/mapper/*.xml
