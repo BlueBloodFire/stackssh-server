@@ -168,6 +168,13 @@ public class DefaultReActFactory {
         /** 最近执行的命令记录（用于注入到动态 Prompt 中） */
         @Builder.Default
         private List<String> recentCommands = new ArrayList<>();
+        
+        // ══════════════════════════════════════════════════════════
+        //  意图状态（Phase 3: 意图识别系统）
+        // ══════════════════════════════════════════════════════════
+        
+        /** 当前意图名称 */
+        private String currentIntent;
 
         // ══════════════════════════════════════════════════════════
         //  辅助方法

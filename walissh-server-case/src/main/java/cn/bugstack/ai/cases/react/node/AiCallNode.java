@@ -7,6 +7,8 @@ import cn.bugstack.ai.cases.react.factory.DefaultReActFactory;
 import cn.bugstack.ai.domain.agent.model.valobj.AiAgentRegisterVO;
 import cn.bugstack.ai.domain.agent.service.IPromptService;
 import cn.bugstack.ai.domain.agent.service.IChatContextService;
+import cn.bugstack.ai.domain.agent.service.IIntentService;
+import cn.bugstack.ai.domain.agent.model.valobj.intent.IntentResultVO;
 import cn.bugstack.ai.domain.agent.adapter.repository.IChatHistoryRepository;
 import cn.bugstack.ai.domain.agent.model.entity.ChatMessageEntity;
 import cn.bugstack.ai.domain.agent.service.armory.factory.DefaultArmoryFactory;
@@ -68,6 +70,9 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
     private IChatContextService chatContextService;
     
     @Resource
+    private IIntentService intentService;
+    
+    @Resource
     private IChatHistoryRepository chatHistoryRepository;
 
     /** SSE 事件发送间隔（字符数） */
@@ -94,6 +99,13 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
 
         // 2. 获取最新用户消息
         String lastUserMessage = getLastUserMessage(requestParameter, dynamicContext);
+
+        // [Phase 3] 意图识别
+        IntentResultVO intentResult = intentService.classify(dynamicContext.getSessionId(), dynamicContext.getUserId(), lastUserMessage);
+        log.info("识别到用户意图: {}, 置信度: {}", intentResult.getIntent().getLabel(), intentResult.getConfidence());
+        
+        // 将意图保存到上下文供后续使用
+        dynamicContext.setCurrentIntent(intentResult.getIntent().name());
 
         // 3. 重置当前轮次缓冲
         dynamicContext.resetRoundBuffers();
