@@ -7,6 +7,8 @@ import cn.bugstack.ai.cases.react.factory.DefaultReActFactory;
 import cn.bugstack.ai.domain.agent.model.valobj.AiAgentRegisterVO;
 import cn.bugstack.ai.domain.agent.service.IPromptService;
 import cn.bugstack.ai.domain.agent.service.IChatContextService;
+import cn.bugstack.ai.domain.agent.adapter.repository.IChatHistoryRepository;
+import cn.bugstack.ai.domain.agent.model.entity.ChatMessageEntity;
 import cn.bugstack.ai.domain.agent.service.armory.factory.DefaultArmoryFactory;
 import cn.bugstack.ai.domain.agent.service.armory.matter.mcp.server.SshExecuteMcpService;
 import cn.bugstack.ai.domain.agent.service.armory.matter.tools.SshExecuteAdkTool;
@@ -64,6 +66,9 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
     
     @Resource
     private IChatContextService chatContextService;
+    
+    @Resource
+    private IChatHistoryRepository chatHistoryRepository;
 
     /** SSE 事件发送间隔（字符数） */
     private static final int SSE_BATCH_SIZE = 20;
@@ -107,6 +112,17 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
         // 5. 构建动态上下文并注入用户消息
         String enrichedMessage = buildEnrichedMessage(lastUserMessage, dynamicContext);
         log.debug("注入动态上下文后消息长度: {} -> {}", lastUserMessage.length(), enrichedMessage.length());
+
+        // [Phase 5] 保存用户消息到数据库（只在首轮保存原始消息）
+        if (dynamicContext.getStep() == 0) {
+            chatHistoryRepository.saveMessage(ChatMessageEntity.builder()
+                    .sessionId(dynamicContext.getSessionId())
+                    .role("user")
+                    .content(lastUserMessage)
+                    .priority("MEDIUM")
+                    .tokenCount(lastUserMessage.length() / 2)
+                    .build());
+        }
 
         // 6. 构建用户消息
         com.google.genai.types.Content userContent = Content.builder()
@@ -266,6 +282,17 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
                 !hasError,
                 dynamicContext.getResult().getTotalToolCalls()
         );
+
+        // [Phase 5] 保存助手回复到数据库（如果是最终回复，或者包含实质性内容）
+        if (textAccumulator.length() > 0) {
+            chatHistoryRepository.saveMessage(ChatMessageEntity.builder()
+                    .sessionId(dynamicContext.getSessionId())
+                    .role("assistant")
+                    .content(textAccumulator.toString())
+                    .priority("MEDIUM")
+                    .tokenCount(textAccumulator.length() / 2)
+                    .build());
+        }
 
         // 11. 错误处理
         if (hasError) {

@@ -4,7 +4,10 @@ import cn.bugstack.ai.api.dto.ChatRequestDTO;
 import cn.bugstack.ai.api.dto.ReActResultDTO;
 import cn.bugstack.ai.cases.react.AbstractAIAgentReActSupport;
 import cn.bugstack.ai.cases.react.factory.DefaultReActFactory;
+import cn.bugstack.ai.domain.agent.adapter.repository.IChatHistoryRepository;
+import cn.bugstack.ai.domain.agent.model.entity.ChatMessageEntity;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -27,6 +30,9 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component("reactRootNode")
 public class RootNode extends AbstractAIAgentReActSupport {
+
+    @Resource
+    private IChatHistoryRepository chatHistoryRepository;
 
     private static final int DEFAULT_MAX_STEPS = 50;
     private static final int DEFAULT_MAX_TOOL_CALLS = 200;
@@ -59,9 +65,23 @@ public class RootNode extends AbstractAIAgentReActSupport {
         dynamicContext.setUserId(userId);
         dynamicContext.setAgentId(agentId);
         dynamicContext.setTerminalSessionId(terminalSessionId);
-        dynamicContext.setMessageHistory(new java.util.ArrayList<>());
         dynamicContext.setCurrentToolCalls(new java.util.ArrayList<>());
         dynamicContext.setCurrentToolResults(new java.util.ArrayList<>());
+
+        // [Phase 5] 从数据库加载历史消息
+        java.util.List<java.util.Map<String, Object>> history = new java.util.ArrayList<>();
+        java.util.List<ChatMessageEntity> recentMessages = chatHistoryRepository.getRecentMessages(sessionId, 50);
+        for (ChatMessageEntity msg : recentMessages) {
+            java.util.Map<String, Object> map = new java.util.HashMap<>();
+            map.put("role", msg.getRole());
+            map.put("content", msg.getContent() != null ? msg.getContent() : "");
+            if ("tool".equals(msg.getRole()) && msg.getToolCallId() != null) {
+                map.put("tool_call_id", msg.getToolCallId());
+                map.put("name", msg.getToolName());
+            }
+            history.add(map);
+        }
+        dynamicContext.setMessageHistory(history);
         dynamicContext.setCurrentStep(new java.util.concurrent.atomic.AtomicInteger(0));
         dynamicContext.setMaxSteps(DEFAULT_MAX_STEPS);
         dynamicContext.setMaxToolCalls(DEFAULT_MAX_TOOL_CALLS);

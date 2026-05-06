@@ -1,6 +1,9 @@
 package cn.bugstack.ai.domain.agent.service.chat;
 
 import cn.bugstack.ai.domain.agent.model.entity.ChatCommandEntity;
+import cn.bugstack.ai.domain.agent.adapter.repository.IChatHistoryRepository;
+import cn.bugstack.ai.domain.agent.model.entity.ChatMessageEntity;
+import cn.bugstack.ai.domain.agent.model.entity.ChatSessionEntity;
 import cn.bugstack.ai.domain.agent.model.valobj.AiAgentConfigTableVO;
 import cn.bugstack.ai.domain.agent.model.valobj.AiAgentRegisterVO;
 import cn.bugstack.ai.domain.agent.model.valobj.properties.AiAgentAutoConfigProperties;
@@ -38,6 +41,9 @@ public class ChatService implements IChatService {
 
     @Resource
     private SshExecuteAdkTool sshExecuteAdkTool;
+    
+    @Resource
+    private IChatHistoryRepository chatHistoryRepository;
 
     private final Map<String, String> userSessions = new ConcurrentHashMap<>();
 
@@ -71,6 +77,21 @@ public class ChatService implements IChatService {
         return userSessions.computeIfAbsent(userId, uid -> {
             Session session = runner.sessionService().createSession(appName, uid)
                     .blockingGet();
+                    
+            // [Phase 5] 保存会话元数据到数据库
+            try {
+                ChatSessionEntity sessionEntity = ChatSessionEntity.builder()
+                        .id(session.id())
+                        .agentId(agentId)
+                        .userId(uid)
+                        .title("新会话")
+                        .messageCount(0)
+                        .build();
+                chatHistoryRepository.saveSession(sessionEntity);
+            } catch (Exception e) {
+                log.error("保存会话元数据失败", e);
+            }
+            
             return session.id();
         });
     }

@@ -4,6 +4,8 @@ import cn.bugstack.ai.api.dto.ChatRequestDTO;
 import cn.bugstack.ai.api.dto.ReActResultDTO;
 import cn.bugstack.ai.domain.agent.service.IPromptService;
 import cn.bugstack.ai.domain.agent.service.IChatContextService;
+import cn.bugstack.ai.domain.agent.adapter.repository.IChatHistoryRepository;
+import cn.bugstack.ai.domain.agent.model.entity.ChatMessageEntity;
 import cn.bugstack.ai.cases.react.AbstractAIAgentReActSupport;
 import cn.bugstack.ai.cases.react.factory.DefaultReActFactory;
 import cn.bugstack.ai.domain.agent.service.armory.matter.tools.SshExecuteAdkTool;
@@ -61,6 +63,9 @@ public class ToolCallNode extends AbstractAIAgentReActSupport {
     
     @Resource
     private IChatContextService chatContextService;
+    
+    @Resource
+    private IChatHistoryRepository chatHistoryRepository;
 
     @Override
     protected ReActResultDTO doApply(ChatRequestDTO requestParameter, DefaultReActFactory.DynamicContext dynamicContext) throws Exception {
@@ -217,6 +222,17 @@ public class ToolCallNode extends AbstractAIAgentReActSupport {
             // 记录里程碑和工具执行摘要
             promptService.detectAndRecordMilestone(dynamicContext.getSessionId(), "tool", resultContent);
             chatContextService.pushToolResult(dynamicContext.getSessionId(), toolName, resultContent);
+
+            // [Phase 5] 保存工具结果消息到数据库
+            chatHistoryRepository.saveMessage(ChatMessageEntity.builder()
+                    .sessionId(dynamicContext.getSessionId())
+                    .role("tool")
+                    .content(resultContent)
+                    .toolName(toolName)
+                    .toolCallId(toolCallId)
+                    .priority("MEDIUM")
+                    .tokenCount(resultContent.length() / 2)
+                    .build());
 
             // 发送 tool_result SSE 事件
             sendToolResultEvent(emitter, toolCallId, resultContent, status);
