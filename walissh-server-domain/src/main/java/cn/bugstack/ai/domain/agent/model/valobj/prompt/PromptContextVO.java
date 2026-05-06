@@ -17,4 +17,8 @@ public class PromptContextVO {
     private List<String> recentCommands;
 
     private List<MilestoneVO> milestoneVOS;
+    
+    private String toolResultSummary;
+    
+    private String taskDescription;
 }

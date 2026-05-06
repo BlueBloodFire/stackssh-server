@@ -63,6 +63,16 @@ public class DynamicPromptBuilder {
             hasContent = true;
         }
 
+        if (!isEmpty(ctx.getToolResultSummary())) {
+            sb.append("\n[工具执行摘要]\n").append(ctx.getToolResultSummary()).append("\n");
+            hasContent = true;
+        }
+
+        if (!isEmpty(ctx.getTaskDescription())) {
+            sb.append("\n[当前任务]\n").append(ctx.getTaskDescription()).append("\n");
+            hasContent = true;
+        }
+
         if (!hasContent) return "";
 
         String prefix = sb.toString();

@@ -6,6 +6,7 @@ import cn.bugstack.ai.cases.react.AbstractAIAgentReActSupport;
 import cn.bugstack.ai.cases.react.factory.DefaultReActFactory;
 import cn.bugstack.ai.domain.agent.model.valobj.AiAgentRegisterVO;
 import cn.bugstack.ai.domain.agent.service.IPromptService;
+import cn.bugstack.ai.domain.agent.service.IChatContextService;
 import cn.bugstack.ai.domain.agent.service.armory.factory.DefaultArmoryFactory;
 import cn.bugstack.ai.domain.agent.service.armory.matter.mcp.server.SshExecuteMcpService;
 import cn.bugstack.ai.domain.agent.service.armory.matter.tools.SshExecuteAdkTool;
@@ -60,6 +61,9 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
 
     @Resource
     private IPromptService promptService;
+    
+    @Resource
+    private IChatContextService chatContextService;
 
     /** SSE 事件发送间隔（字符数） */
     private static final int SSE_BATCH_SIZE = 20;
@@ -88,6 +92,10 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
 
         // 3. 重置当前轮次缓冲
         dynamicContext.resetRoundBuffers();
+
+        // [Phase 2] 裁剪消息历史
+        List<Map<String, Object>> trimmedHistory = chatContextService.trimHistory(dynamicContext.getMessageHistory(), 8000);
+        dynamicContext.setMessageHistory(new ArrayList<>(trimmedHistory));
 
         // 4. 绑定终端会话 ID
         String terminalSessionId = dynamicContext.getTerminalSessionId();
@@ -204,6 +212,9 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
                             // 记录里程碑（工具结果）
                             promptService.detectAndRecordMilestone(
                                     dynamicContext.getSessionId(), "tool", resultContent);
+                            
+                            // 记录到上下文提供者中
+                            chatContextService.pushToolResult(dynamicContext.getSessionId(), toolName, resultContent);
                         }
                     }
                 }
@@ -409,7 +420,8 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
                 userMessage,
                 dynamicContext.getSessionId(),
                 dynamicContext.getTerminalSessionId(),
-                dynamicContext.getRecentCommands()
+                dynamicContext.getRecentCommands(),
+                dynamicContext.getMessageHistory()
         );
     }
 
