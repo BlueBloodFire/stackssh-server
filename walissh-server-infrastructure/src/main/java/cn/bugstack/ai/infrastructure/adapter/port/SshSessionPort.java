@@ -3,8 +3,10 @@ package cn.bugstack.ai.infrastructure.adapter.port;
 import cn.bugstack.ai.domain.ssh.adapter.port.ISshSessionPort;
 import com.jcraft.jsch.*;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
+import javax.annotation.Resource;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -62,16 +64,37 @@ public class SshSessionPort implements ISshSessionPort {
         }
     }
 
+    @Lazy
+    @Resource
+    private SshFilePort sshFilePort;
+
     /**
      * 断开 SSH 连接
      *
      * @param connectionId 连接ID
      */
     public void disconnect(String connectionId) {
+        log.info("正在断开 SSH 连接 connectionId={}", connectionId);
+        
+        // 先清理该连接关联的 SFTP channel
+        try {
+            if (sshFilePort != null) {
+                sshFilePort.closeSftp(connectionId);
+            }
+        } catch (Exception e) {
+            log.warn("关闭 SFTP 通道时异常: {}", e.getMessage());
+        }
+        
         Session session = sessions.remove(connectionId);
-        if (session != null && session.isConnected()) {
-            session.disconnect();
-            log.info("SSH连接已断开 connectionId={}", connectionId);
+        if (session != null) {
+            try {
+                if (session.isConnected()) {
+                    session.disconnect();
+                    log.info("SSH连接已断开 connectionId={}", connectionId);
+                }
+            } catch (Exception e) {
+                log.warn("断开 SSH 连接时异常: {}", e.getMessage());
+            }
         }
     }
 
@@ -83,7 +106,28 @@ public class SshSessionPort implements ISshSessionPort {
      */
     public boolean isConnected(String connectionId) {
         Session session = sessions.get(connectionId);
-        return session != null && session.isConnected();
+        if (session == null) {
+            return false;
+        }
+        try {
+            // 不仅检查 isConnected，还要做一个轻量级的实际连接状态检查
+            if (session.isConnected()) {
+                // 发送一个简单的心跳包检查连接是否真正可用
+                session.sendIgnore();
+                return true;
+            }
+        } catch (Exception e) {
+            // 出现异常，说明连接实际上已经断开了
+            log.warn("检查连接状态时发现异常，连接可能已断开: {}", e.getMessage());
+            // 清理无效连接
+            try {
+                disconnect(connectionId);
+            } catch (Exception ex) {
+                log.warn("清理无效连接时异常: {}", ex.getMessage());
+            }
+            return false;
+        }
+        return false;
     }
 
     /**

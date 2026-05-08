@@ -257,48 +257,59 @@ public class TerminalSessionPort implements ITerminalSessionPort {
         readerAlive.put(sessionId, true);
         Thread reader = new Thread(() -> {
             byte[] buf = new byte[4096];
+            int consecutiveErrors = 0;
+            
             try {
                 int len;
-                while ((len = in.read(buf)) != -1) {
-                    String text = new String(buf, 0, len, StandardCharsets.UTF_8);
-                    StringBuilder buffer = outputBuffers.get(sessionId);
-                    if (buffer != null) {
-                        synchronized (buffer) {
-                            buffer.append(text);
+                while (true) {
+                    try {
+                        if ((len = in.read(buf)) == -1) {
+                            // in.read() 返回 -1，说明 shell channel EOF
+                            log.warn("终端 Shell Channel EOF sessionId={}", sessionId);
+                            break;
                         }
-                    }
-                    // 如果开启了 Agent 捕获模式，同时写入 agent 专用缓冲区
-                    StringBuilder agentBuffer = agentBuffers.get(sessionId);
-                    Boolean capture = agentCaptureMode.get(sessionId);
-                    if (agentBuffer != null && Boolean.TRUE.equals(capture)) {
-                        synchronized (agentBuffer) {
-                            agentBuffer.append(text);
+                        
+                        consecutiveErrors = 0; // 重置错误计数
+                        
+                        String text = new String(buf, 0, len, StandardCharsets.UTF_8);
+                        StringBuilder buffer = outputBuffers.get(sessionId);
+                        if (buffer != null) {
+                            synchronized (buffer) {
+                                buffer.append(text);
+                            }
                         }
+                        // 如果开启了 Agent 捕获模式，同时写入 agent 专用缓冲区
+                        StringBuilder agentBuffer = agentBuffers.get(sessionId);
+                        Boolean capture = agentCaptureMode.get(sessionId);
+                        if (agentBuffer != null && Boolean.TRUE.equals(capture)) {
+                            synchronized (agentBuffer) {
+                                agentBuffer.append(text);
+                            }
+                        }
+                    } catch (java.net.SocketTimeoutException e) {
+                        // SocketTimeout 不是断连，重试即可
+                        log.debug("终端读取超时（非断连），继续读取 sessionId={}", sessionId);
+                    } catch (IOException e) {
+                        consecutiveErrors++;
+                        
+                        ChannelShell ch = channels.get(sessionId);
+                        // channel 还活着说明可能是临时 I/O 问题，尝试恢复
+                        if (ch != null && ch.isConnected() && consecutiveErrors < 3) {
+                            log.warn("终端读取I/O异常({}/3)，继续尝试 sessionId={} reason={}", 
+                                    consecutiveErrors, sessionId, e.getMessage());
+                            Thread.sleep(100); // 短暂等待后重试
+                            continue;
+                        }
+                        
+                        // 超过重试次数或通道已断开
+                        log.warn("终端输出读取异常 sessionId={} reason={} consecutiveErrors={}", 
+                                sessionId, e.getMessage(), consecutiveErrors);
+                        break;
                     }
                 }
-                // in.read() 返回 -1，说明 shell channel EOF
-                log.warn("终端 Shell Channel EOF sessionId={}", sessionId);
-            } catch (java.net.SocketTimeoutException e) {
-                // SocketTimeout 不是断连，重试即可——但实际不应到这里了（setTimeout(0)）
-                // 保留作为防御性处理
-                log.debug("终端读取超时（非断连），继续读取 sessionId={}", sessionId);
-                InputStream inRef = inputStreams.get(sessionId);
-                if (inRef != null) {
-                    startOutputReader(sessionId, inRef);
-                }
-                return; // 当前线程退出，新线程已接替
-            } catch (IOException e) {
-                ChannelShell ch = channels.get(sessionId);
-                // channel 还活着说明不是真正的断连，可能是临时 I/O 问题，尝试重启
-                if (ch != null && ch.isConnected()) {
-                    log.warn("终端读取I/O异常但channel仍连接，重启reader sessionId={} reason={}", sessionId, e.getMessage());
-                    InputStream inRef = inputStreams.get(sessionId);
-                    if (inRef != null) {
-                        startOutputReader(sessionId, inRef);
-                    }
-                    return;
-                }
-                log.debug("终端输出读取异常 sessionId={} reason={}", sessionId, e.getMessage());
+            } catch (InterruptedException e) {
+                log.info("终端读取线程被中断 sessionId={}", sessionId);
+                Thread.currentThread().interrupt();
             } finally {
                 readerAlive.put(sessionId, false);
 
