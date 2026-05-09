@@ -12,6 +12,9 @@ public interface ISshFileDomainService {
 
     SshFileContentEntity content(String connectionId, String path) throws Exception;
 
+    /** 支持大文件分片读取 */
+    SshFileContentEntity content(String connectionId, String path, Long offset, Integer limit) throws Exception;
+
     void createFile(String connectionId, String path, boolean useSudo) throws Exception;
 
     void createDirectory(String connectionId, String path, boolean useSudo) throws Exception;
@@ -21,5 +24,9 @@ public interface ISshFileDomainService {
     void delete(String connectionId, String path, boolean useSudo) throws Exception;
 
     void saveFile(String connectionId, String path, String content, boolean useSudo) throws Exception;
+
+    void uploadFile(String connectionId, String path, java.io.InputStream inputStream) throws Exception;
+
+    void downloadFile(String connectionId, String path, java.io.OutputStream outputStream) throws Exception;
 
 }

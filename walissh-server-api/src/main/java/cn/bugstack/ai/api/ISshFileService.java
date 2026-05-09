@@ -25,4 +25,7 @@ public interface ISshFileService {
      */
     Response<SshFileContentResponseDTO> content(String connectionId, String path);
 
+    /** 读取文件内容（支持分片 offset/limit） */
+    Response<SshFileContentResponseDTO> contentChunk(String connectionId, String path, Long offset, Integer limit);
+
 }

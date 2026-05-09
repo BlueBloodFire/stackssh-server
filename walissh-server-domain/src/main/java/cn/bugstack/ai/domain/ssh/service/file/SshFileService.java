@@ -34,6 +34,13 @@ public class SshFileService implements ISshFileDomainService {
     }
 
     @Override
+    public SshFileContentEntity content(String connectionId, String path, Long offset, Integer limit) throws Exception {
+        validateConnection(connectionId);
+        validatePath(path);
+        return sshFilePort.readFile(connectionId, path, offset, limit);
+    }
+
+    @Override
     public void createFile(String connectionId, String path, boolean useSudo) throws Exception {
         validateConnection(connectionId);
         validatePath(path);
@@ -67,6 +74,20 @@ public class SshFileService implements ISshFileDomainService {
         validateConnection(connectionId);
         validatePath(path);
         sshFilePort.saveFile(connectionId, path, content, useSudo);
+    }
+
+    @Override
+    public void uploadFile(String connectionId, String path, java.io.InputStream inputStream) throws Exception {
+        validateConnection(connectionId);
+        validatePath(path);
+        sshFilePort.uploadFile(connectionId, path, inputStream);
+    }
+
+    @Override
+    public void downloadFile(String connectionId, String path, java.io.OutputStream outputStream) throws Exception {
+        validateConnection(connectionId);
+        validatePath(path);
+        sshFilePort.downloadFile(connectionId, path, outputStream);
     }
 
     private void validateConnection(String connectionId) {

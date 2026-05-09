@@ -32,6 +32,7 @@ public class SshFilePort implements ISshFilePort {
 
     private static final int MAX_LIST_COUNT = 500;
     private static final int MAX_READ_BYTES = 512 * 1024;
+    private static final int CHUNK_READ_BYTES = 256 * 1024;
     private static final String ROOT = "/";
 
     @Resource
@@ -83,8 +84,15 @@ public class SshFilePort implements ISshFilePort {
         }
     }
 
+    /** 基础读取（前 512KB），兼容旧接口 */
     @Override
     public SshFileContentEntity readFile(String connectionId, String path) {
+        return readFile(connectionId, path, null, null);
+    }
+
+    /** 支持 offset + limit 的大文件分片读取 */
+    @Override
+    public SshFileContentEntity readFile(String connectionId, String path, Long offset, Integer limit) {
         Session session = requireSession(connectionId);
         try {
             ChannelSftp sftp = getOrOpenSftp(connectionId, session);
@@ -93,16 +101,20 @@ public class SshFilePort implements ISshFilePort {
             if (attrs == null || attrs.isDir()) throw new IllegalArgumentException("目标不是文件: " + normalizedPath);
 
             long fileSize = attrs.getSize();
-            int readBytes = (int) Math.min(fileSize, MAX_READ_BYTES);
-            boolean truncated = fileSize > MAX_READ_BYTES;
+            long readOffset = (offset != null && offset >= 0) ? offset : 0;
+            int readLimit = (limit != null && limit > 0) ? Math.min(limit, CHUNK_READ_BYTES) : CHUNK_READ_BYTES;
+            int readBytes = (int) Math.min(readLimit, fileSize - readOffset);
+            boolean truncated = readBytes < (fileSize - readOffset);
 
-            byte[] contentBytes = readBytes(sftp, normalizedPath, readBytes);
+            byte[] contentBytes = readBytesWithOffset(sftp, normalizedPath, readOffset, readBytes);
             boolean binary = isLikelyBinary(contentBytes);
             String content = binary ? "" : new String(contentBytes, StandardCharsets.UTF_8);
 
+
             return SshFileContentEntity.builder()
                     .path(normalizedPath).name(fileNameOf(normalizedPath)).charset("UTF-8")
-                    .size(fileSize).binary(binary).truncated(truncated).content(content).build();
+                    .size(fileSize).binary(binary).truncated(truncated)
+                    .content(content).offset(readOffset).build();
         } catch (SftpException e) {
             throw new IllegalArgumentException("文件不存在或无权限访问: " + path, e);
         } catch (Exception e) {
@@ -229,6 +241,32 @@ public class SshFilePort implements ISshFilePort {
         log.info("保存文件: connectionId={}, path={}, sudo={}", connectionId, normalizedPath, useSudo);
     }
 
+    @Override
+    public void uploadFile(String connectionId, String path, InputStream inputStream) {
+        Session session = requireSession(connectionId);
+        String normalizedPath = normalizePath(path);
+        try {
+            ChannelSftp sftp = getOrOpenSftp(connectionId, session);
+            sftp.put(inputStream, normalizedPath);
+            log.info("上传文件: connectionId={}, path={}", connectionId, normalizedPath);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("上传文件失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void downloadFile(String connectionId, String path, OutputStream outputStream) {
+        Session session = requireSession(connectionId);
+        String normalizedPath = normalizePath(path);
+        try {
+            ChannelSftp sftp = getOrOpenSftp(connectionId, session);
+            sftp.get(normalizedPath, outputStream);
+            log.info("下载文件: connectionId={}, path={}", connectionId, normalizedPath);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("下载文件失败: " + e.getMessage(), e);
+        }
+    }
+
     // ==================== 内部工具 ====================
 
     public void closeSftp(String connectionId) {
@@ -239,17 +277,27 @@ public class SshFilePort implements ISshFilePort {
     private Session requireSession(String connectionId) {
         Session session = sshSessionPort.getSession(connectionId);
         if (session == null || !session.isConnected()) { closeSftp(connectionId); throw new IllegalStateException("SSH连接未建立"); }
+        // Session 存活但 SFTP channel 可能已断开，此时清理 channel，下次 getOrOpenSftp 会重建
+        ChannelSftp existing = sftpChannels.get(connectionId);
+        if (existing != null && (!existing.isConnected() || existing.isClosed())) {
+            closeSftp(connectionId);
+        }
         return session;
     }
 
-    private synchronized ChannelSftp getOrOpenSftp(String connectionId, Session session) throws Exception {
+    private synchronized ChannelSftp getOrOpenSftp(String connectionId, Session session) {
         ChannelSftp sftp = sftpChannels.get(connectionId);
         if (sftp != null && sftp.isConnected() && !sftp.isClosed()) return sftp;
         if (sftp != null) { try { sftp.disconnect(); } catch (Exception ignored) {} sftpChannels.remove(connectionId); }
-        sftp = (ChannelSftp) session.openChannel("sftp");
-        sftp.connect(8000);
-        sftpChannels.put(connectionId, sftp);
-        return sftp;
+        try {
+            sftp = (ChannelSftp) session.openChannel("sftp");
+            sftp.connect(8000);
+            sftpChannels.put(connectionId, sftp);
+            log.info("SFTP channel 已重建 connectionId={}", connectionId);
+            return sftp;
+        } catch (Exception e) {
+            throw new RuntimeException("SFTP channel 打开失败: " + e.getMessage(), e);
+        }
     }
 
     private void execSudo(Session session, String command) {
@@ -287,6 +335,29 @@ public class SshFilePort implements ISshFilePort {
 
     private static byte[] readBytes(ChannelSftp sftp, String path, int maxBytes) throws Exception {
         try (InputStream in = sftp.get(path); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buf = new byte[8192]; int total = 0, n;
+            while ((n = in.read(buf)) != -1 && total < maxBytes) { int w = Math.min(maxBytes - total, n); out.write(buf, 0, w); total += w; }
+            return out.toByteArray();
+        }
+    }
+
+
+    /** 支持 offset + limit 的大文件分片读取 */
+    private static byte[] readBytesWithOffset(ChannelSftp sftp, String path, long offset, int maxBytes) throws Exception {
+        try (InputStream in = sftp.get(path)) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            if (offset > 0) {
+                long skipped = in.skip(offset);
+                if (skipped < offset) {
+                    // skip 可能在某些 SFTP 实现上不完美，保守地读掉多余字节
+                    byte[] tmp = new byte[(int) Math.min(8192, offset - skipped)];
+                    int r;
+                    while (skipped < offset && (r = in.read(tmp)) != -1) {
+                        skipped += r;
+                        if (skipped >= offset) break;
+                    }
+                }
+            }
             byte[] buf = new byte[8192]; int total = 0, n;
             while ((n = in.read(buf)) != -1 && total < maxBytes) { int w = Math.min(maxBytes - total, n); out.write(buf, 0, w); total += w; }
             return out.toByteArray();

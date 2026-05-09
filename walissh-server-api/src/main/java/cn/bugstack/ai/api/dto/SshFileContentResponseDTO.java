@@ -32,6 +32,12 @@ public class SshFileContentResponseDTO {
     /** 是否因为太大被截断 */
     private boolean truncated;
 
+    /** 分片读取时的起始偏移量 */
+    private Long offset;
+
+    /** 分片读取后剩余未读字节数（用于判断是否还有更多内容） */
+    private Long remaining;
+
     /** 文件内容（文本） */
     private String content;
 
