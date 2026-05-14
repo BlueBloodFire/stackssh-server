@@ -22,7 +22,7 @@ spring:
     import:
 #      - classpath:agent/test-agent-02.yml
 #      - classpath:agent/test-agent.yml
-      - classpath:agent/only-one-agent.yml
+#      - classpath:agent/only-one-agent.yml
       - classpath:agent/ssh-agent.yml
 #      - classpath:agent/parallel_research_app.yml
   datasource:
@@ -43,7 +43,7 @@ spring:
 # AI API Configuration (意图识别专属配置)
 intent-ai-api:
   base-url: https://apis.itedus.cn
-  api-key: sk-IWpcS35fanJ2txV10453F9E167C84e9b968cA924Fc34Af6d
+  api-key: sk-ICVYt7VQ4moKhlQV1aEe9bC035A249B2B62421931fD0373e
   completions-path: v1/chat/completions
   embeddings-path: v1/embeddings
   chat-model:

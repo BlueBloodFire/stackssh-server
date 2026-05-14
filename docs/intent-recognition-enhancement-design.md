@@ -85,6 +85,7 @@ walissh-server-domain/src/main/java/cn/bugstack/ai/domain/agent/
 │   ├── IIntentService.java                   意图识别领域服务接口
 │   ├── IIntentEnhancerService.java           意图增强领域服务接口
 │   ├── IPromptService.java                   提示词构建领域服务接口
+│   ├── armory/                               智能体装配（google adk）
 │   ├── context/                              上下文记忆服务实现包
 │   │   ├── ChatContextService.java           领域服务实现
 │   │   ├── provider/
@@ -126,8 +127,8 @@ walissh-server-domain/src/main/java/cn/bugstack/ai/domain/agent/
 │   │   └── ConversationContext.java          对话上下文
 │   └── entity/
 │       └── ChatMessageEntity.java            对话消息实体
-└── gateway/
-    └── IChatHistoryGateway.java              对话历史持久化网关接口
+└── adaper/
+    └── IChatHistoryRepository.java              对话历史持久化网关接口
 ```
 
 ---

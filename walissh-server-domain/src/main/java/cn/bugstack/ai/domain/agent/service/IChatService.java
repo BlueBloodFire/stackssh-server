@@ -1,6 +1,7 @@
 package cn.bugstack.ai.domain.agent.service;
 
 import cn.bugstack.ai.domain.agent.model.entity.ChatCommandEntity;
+import cn.bugstack.ai.domain.agent.model.valobj.AiAgentConfigTableVO;
 import com.google.adk.events.Event;
 import io.reactivex.rxjava3.core.Flowable;
 
@@ -14,7 +15,7 @@ public interface IChatService {
     /**
      * 查询智能体配置列表
      */
-    List queryAiAgentConfigList();
+    List<AiAgentConfigTableVO.Agent> queryAiAgentConfigList();
 
     /**
      * 创建会话

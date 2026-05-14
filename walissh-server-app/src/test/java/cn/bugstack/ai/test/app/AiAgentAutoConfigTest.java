@@ -4,6 +4,7 @@ import cn.bugstack.ai.domain.agent.model.valobj.AiAgentRegisterVO;
 import com.alibaba.fastjson.JSON;
 import com.google.adk.events.Event;
 import com.google.adk.runner.InMemoryRunner;
+import com.google.adk.runner.Runner;
 import com.google.adk.sessions.Session;
 import com.google.genai.types.Content;
 import com.google.genai.types.Part;
@@ -39,7 +40,7 @@ public class AiAgentAutoConfigTest {
         AiAgentRegisterVO aiAgentRegisterVO = applicationContext.getBean("100001", AiAgentRegisterVO.class);
 
         String appName = aiAgentRegisterVO.getAppName();
-        InMemoryRunner runner = aiAgentRegisterVO.getRunner();
+        Runner runner = aiAgentRegisterVO.getRunner();
 
         Session session = runner.sessionService()
                 .createSession(appName, "xiaofuge")
@@ -61,7 +62,7 @@ public class AiAgentAutoConfigTest {
         AiAgentRegisterVO aiAgentRegisterVO = applicationContext.getBean("100002", AiAgentRegisterVO.class);
 
         String appName = aiAgentRegisterVO.getAppName();
-        InMemoryRunner runner = aiAgentRegisterVO.getRunner();
+        Runner runner = aiAgentRegisterVO.getRunner();
 
         Session session = runner.sessionService()
                 .createSession(appName, "xiaofuge")
@@ -81,7 +82,7 @@ public class AiAgentAutoConfigTest {
         AiAgentRegisterVO aiAgentRegisterVO = applicationContext.getBean("100003", AiAgentRegisterVO.class);
 
         String appName = aiAgentRegisterVO.getAppName();
-        InMemoryRunner runner = aiAgentRegisterVO.getRunner();
+        Runner runner = aiAgentRegisterVO.getRunner();
 
         Session session = runner.sessionService()
                 .createSession(appName, "xiaofuge")
