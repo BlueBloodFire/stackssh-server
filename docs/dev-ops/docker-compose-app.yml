@@ -1,11 +1,11 @@
-# /usr/local/bin/docker-compose -f /docs/dev-ops/environment/environment-docker-compose-2.4.yml up -d
+﻿# /usr/local/bin/docker-compose -f /docs/dev-ops/environment/environment-docker-compose-2.4.yml up -d
 version: '3.8'
 # docker-compose -f docker-compose-app.yml up -d
 # 你需要修改system为你自身系统的仓库名
 services:
   ai-mcp-gateway:
-    image: registry.cn-hangzhou.aliyuncs.com/fuzhengwei/walissh-server-app:1.0
-    container_name: walissh-server-app
+    image: registry.cn-hangzhou.aliyuncs.com/wangjin/stackssh-server-app:1.0
+    container_name: stackssh-server-app
     restart: on-failure
     ports:
       - "8091:8091"
@@ -27,7 +27,7 @@ services:
       # 数据库配置 (来自 application-dev.yml spring.datasource)
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=123456
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/walissh?useUnicode=true&characterEncoding=utf8&autoReconnect=true&zeroDateTimeBehavior=convertToNull&serverTimezone=UTC&useSSL=true
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stackssh?useUnicode=true&characterEncoding=utf8&autoReconnect=true&zeroDateTimeBehavior=convertToNull&serverTimezone=UTC&useSSL=true
     volumes:
       - ./log:/data/log
     logging:

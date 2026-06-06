@@ -1,0 +1,71 @@
+server:
+  port: 8091
+
+thread:
+  pool:
+    executor:
+      config:
+        core-pool-size: 20
+        max-pool-size: 50
+        keep-alive-time: 5000
+        block-queue-size: 5000
+        policy: CallerRunsPolicy
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 1024MB
+      max-request-size: 1024MB
+  config:
+    import:
+      - classpath:agent/ssh-agent.yml
+  datasource:
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:123456}
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://mysql:3306/stackssh?useUnicode=true&characterEncoding=utf8&autoReconnect=true&zeroDateTimeBehavior=convertToNull&serverTimezone=UTC&useSSL=true}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  hikari:
+    pool-name: Retail_HikariCP
+    minimum-idle: 5
+    idle-timeout: 180000
+    maximum-pool-size: 25
+    auto-commit: true
+    max-lifetime: 1800000
+    connection-timeout: 30000
+    connection-test-query: SELECT 1
+
+intent-ai-api:
+  base-url: ${INTENT_AI_API_BASE_URL:https://api.deepseek.com}
+  api-key: ${INTENT_AI_API_API_KEY:}
+  completions-path: ${INTENT_AI_API_COMPLETIONS_PATH:v1/chat/completions}
+  embeddings-path: ${INTENT_AI_API_EMBEDDINGS_PATH:v1/embeddings}
+  chat-model:
+    model: ${INTENT_AI_API_CHAT_MODEL_MODEL:deepseek-v4-flash}
+
+mybatis:
+  mapper-locations: classpath:/mybatis/mapper/*.xml
+  config-location: classpath:/mybatis/config/mybatis-config.xml
+
+terminal:
+  safety:
+    dangerous-commands:
+      - "rm -rf /"
+      - "rm -rf /*"
+      - "rm -rf ~"
+      - "rm -rf ~/*"
+      - "mkfs"
+      - "dd if=/dev/zero"
+      - "dd if=/dev/urandom"
+      - "> /dev/sda"
+      - "chmod -R 777 /"
+      - "kill -9 -1"
+      - ":(){ :|:& };:"
+      - "shutdown now"
+      - "reboot"
+      - "init 0"
+      - "init 6"
+
+logging:
+  level:
+    root: info
+  config: classpath:logback-spring.xml

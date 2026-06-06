@@ -1,7 +1,7 @@
-<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+﻿<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>cn.bugstack.ai</groupId>
-  <artifactId>walissh-server</artifactId>
+  <artifactId>stackssh-server</artifactId>
   <version>1.0</version>
   <packaging>pom</packaging>
   <repositories>
@@ -25,10 +25,10 @@
   </properties>
   <developers>
     <developer>
-      <name>xiaofuge</name>
-      <email>184172133@qq.com</email>
-      <organization>fuzhengwei</organization>
-      <organizationUrl>https://github.com/fuzhengwei</organizationUrl>
+      <name>wangjin</name>
+      <email>wangjin@qq.com</email>
+      <organization>wangjin</organization>
+      <organizationUrl>https://github.com/wangjin</organizationUrl>
     </developer>
   </developers>
   <licenses>
@@ -186,32 +186,32 @@
       <!-- 工程模块 -->
       <dependency>
         <groupId>cn.bugstack.ai</groupId>
-        <artifactId>walissh-server-api</artifactId>
+        <artifactId>stackssh-server-api</artifactId>
         <version>1.0</version>
       </dependency>
       <dependency>
         <groupId>cn.bugstack.ai</groupId>
-        <artifactId>walissh-server-domain</artifactId>
+        <artifactId>stackssh-server-domain</artifactId>
         <version>1.0</version>
       </dependency>
       <dependency>
         <groupId>cn.bugstack.ai</groupId>
-        <artifactId>walissh-server-infrastructure</artifactId>
+        <artifactId>stackssh-server-infrastructure</artifactId>
         <version>1.0</version>
       </dependency>
       <dependency>
         <groupId>cn.bugstack.ai</groupId>
-        <artifactId>walissh-server-case</artifactId>
+        <artifactId>stackssh-server-case</artifactId>
         <version>1.0</version>
       </dependency>
       <dependency>
         <groupId>cn.bugstack.ai</groupId>
-        <artifactId>walissh-server-types</artifactId>
+        <artifactId>stackssh-server-types</artifactId>
         <version>1.0</version>
       </dependency>
       <dependency>
         <groupId>cn.bugstack.ai</groupId>
-        <artifactId>walissh-server-trigger</artifactId>
+        <artifactId>stackssh-server-trigger</artifactId>
         <version>1.0</version>
       </dependency>
     </dependencies>
@@ -286,12 +286,12 @@
     </profile>
   </profiles>
   <modules>
-    <module>walissh-server-api</module>
-    <module>walissh-server-app</module>
-    <module>walissh-server-domain</module>
-    <module>walissh-server-trigger</module>
-    <module>walissh-server-infrastructure</module>
-    <module>walissh-server-types</module>
-      <module>walissh-server-case</module>
+    <module>stackssh-server-api</module>
+    <module>stackssh-server-app</module>
+    <module>stackssh-server-domain</module>
+    <module>stackssh-server-trigger</module>
+    <module>stackssh-server-infrastructure</module>
+    <module>stackssh-server-types</module>
+      <module>stackssh-server-case</module>
   </modules>
 </project>

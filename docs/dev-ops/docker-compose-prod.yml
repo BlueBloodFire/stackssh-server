@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0.32
+    container_name: stackssh-mysql
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: 123456
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql/my.cnf:/etc/mysql/conf.d/mysql.cnf:ro
+      - ./mysql/sql:/docker-entrypoint-initdb.d
+      - stackssh-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    networks:
+      - stackssh-net
+
+  app:
+    image: stackssh-server-app:latest
+    container_name: stackssh-server-app
+    restart: on-failure
+    network_mode: host
+    environment:
+      - TZ=PRC
+      - SERVER_PORT=8091
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=123456
+      - SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3306/stackssh?useUnicode=true&characterEncoding=utf8&autoReconnect=true&zeroDateTimeBehavior=convertToNull&serverTimezone=UTC&useSSL=false
+      - INTENT_AI_API_BASE_URL=https://api.deepseek.com
+      - INTENT_AI_API_API_KEY=sk-1e03bd81f3d241b4af9cd71e9a628ea8
+      - INTENT_AI_API_COMPLETIONS_PATH=v1/chat/completions
+      - INTENT_AI_API_EMBEDDINGS_PATH=v1/embeddings
+      - INTENT_AI_API_CHAT_MODEL_MODEL=deepseek-v4-flash
+    volumes:
+      - ./log:/data/log
+    depends_on:
+      mysql:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  stackssh-mysql-data:
+
+networks:
+  stackssh-net:
+    driver: bridge
