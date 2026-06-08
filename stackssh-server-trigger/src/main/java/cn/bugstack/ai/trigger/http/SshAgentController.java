@@ -4,6 +4,7 @@ import cn.bugstack.ai.api.dto.*;
 import cn.bugstack.ai.api.response.Response;
 import cn.bugstack.ai.domain.agent.service.IChatService;
 import cn.bugstack.ai.domain.agent.service.armory.matter.mcp.server.SshExecuteMcpService;
+import cn.bugstack.ai.domain.agent.service.armory.matter.tools.SshExecuteAdkTool;
 import cn.bugstack.ai.types.enums.ResponseCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -58,8 +59,9 @@ public class SshAgentController {
                         .build();
             }
 
-            // 存储绑定关系
+            // 存储绑定关系，并同步写入 ADK 工具的 session mapping
             sessionBindings.put(chatSessionId, terminalSessionId);
+            SshExecuteAdkTool.setTerminalSession(chatSessionId, terminalSessionId);
 
             BindTerminalResponseDTO response = BindTerminalResponseDTO.builder()
                     .chatSessionId(chatSessionId)
@@ -94,6 +96,7 @@ public class SshAgentController {
             log.info("解绑终端会话: chatSessionId={}", chatSessionId);
 
             sessionBindings.remove(chatSessionId);
+            SshExecuteAdkTool.clearTerminalSession(chatSessionId);
 
             return Response.<Void>builder()
                     .code(ResponseCode.SUCCESS.getCode())

@@ -271,8 +271,8 @@ public class ToolCallNode extends AbstractAIAgentReActSupport {
             return "Error: missing 'command' argument";
         }
 
-        // 2. 执行 SSH 命令
-        Map<String, Object> result = sshExecuteAdkTool.executeCommand(command);
+        // 2. 执行 SSH 命令（ToolCallNode 直接调用时 ToolContext 为 null，依赖 ThreadLocal 或 session mapping）
+        Map<String, Object> result = sshExecuteAdkTool.executeCommand(command, null);
 
         // 3. 格式化结果
         return formatSshResult(result);

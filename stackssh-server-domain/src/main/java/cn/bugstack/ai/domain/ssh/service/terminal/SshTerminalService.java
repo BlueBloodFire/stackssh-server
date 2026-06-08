@@ -70,7 +70,7 @@ public class SshTerminalService implements ISshTerminalService {
                 .build();
 
         sessionCache.put(sessionId, entity);
-        log.info("终端会话创建成功 sessionId={}", sessionId);
+        log.info("[Diag] 终端会话加入缓存 sessionId={} cacheSize={}", sessionId, sessionCache.size());
 
         return entity;
     }
@@ -87,6 +87,8 @@ public class SshTerminalService implements ISshTerminalService {
 
         // 1. 校验会话
         TerminalSessionEntity entity = sessionCache.get(sessionId);
+        log.info("[Diag] executeCommand 校验 id={} found={} active={}",
+                sessionId, entity != null, entity != null && entity.isActive());
         if (entity == null || !entity.isActive()) {
             throw new IllegalArgumentException("终端会话不存在或已关闭");
         }
@@ -188,7 +190,21 @@ public class SshTerminalService implements ISshTerminalService {
 
     @Override
     public boolean sessionExists(String sessionId) {
-        return sessionCache.containsKey(sessionId);
+        boolean exists = sessionCache.containsKey(sessionId);
+        if (!exists) {
+            log.warn("[Diag] sessionExists=false id={} cacheSize={} cacheKeys={}",
+                    sessionId, sessionCache.size(), sessionCache.keySet());
+            return false;
+        }
+        // 进一步确认底层 channel 仍连接（SSH 断开后 channel 关闭但 cache 未清除时检测到此情况）
+        boolean channelAlive = terminalSessionService.sessionExists(sessionId);
+        if (!channelAlive) {
+            log.warn("[Diag] sessionExists=false (channel dead, cleaning cache) id={}", sessionId);
+            sessionCache.remove(sessionId);
+            return false;
+        }
+        log.info("[Diag] sessionExists=true id={}", sessionId);
+        return true;
     }
 
     @Override
@@ -208,6 +224,23 @@ public class SshTerminalService implements ISshTerminalService {
         }
         terminalSessionService.write(sessionId, input);
         entity.touch();
+    }
+
+    @Override
+    public void closeTerminalsByConnection(String connectionId) {
+        List<String> toClose = new java.util.ArrayList<>();
+        for (Map.Entry<String, TerminalSessionEntity> entry : sessionCache.entrySet()) {
+            if (connectionId.equals(entry.getValue().getConnectionId())) {
+                toClose.add(entry.getKey());
+            }
+        }
+        for (String sid : toClose) {
+            log.info("SSH断开，关闭终端 session sessionId={} connectionId={}", sid, connectionId);
+            try {
+                terminalSessionService.closeSession(sid);
+            } catch (Exception ignored) {}
+            sessionCache.remove(sid);
+        }
     }
 
     @Override

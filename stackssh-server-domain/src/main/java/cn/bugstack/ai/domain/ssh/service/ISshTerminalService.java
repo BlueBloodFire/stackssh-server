@@ -95,6 +95,13 @@ public interface ISshTerminalService {
     void stopRecording(String sessionId, String recordingId);
 
     /**
+     * 关闭某个 SSH 连接下的所有终端 session（SSH 断开时调用，防止 cache 残留）
+     *
+     * @param connectionId SSH 连接ID
+     */
+    void closeTerminalsByConnection(String connectionId);
+
+    /**
      * 获取连接的录制列表
      */
     java.util.List<cn.bugstack.ai.domain.ssh.model.entity.TerminalRecordingEntity> listRecordings(String connectionId);

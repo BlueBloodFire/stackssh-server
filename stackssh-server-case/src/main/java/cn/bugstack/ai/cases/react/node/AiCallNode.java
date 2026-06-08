@@ -133,10 +133,13 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
         dynamicContext.setMessageHistory(new ArrayList<>(trimmedHistory));
 
         // 4. 绑定终端会话 ID
+        // ThreadLocal 仅在同线程有效；ADK 工具在 RxJava 线程池中执行，需额外写入 session mapping
         String terminalSessionId = dynamicContext.getTerminalSessionId();
         if (terminalSessionId != null && !terminalSessionId.isEmpty()) {
             SshExecuteAdkTool.setCurrentTerminalSession(terminalSessionId);
             SshExecuteMcpService.setCurrentTerminalSession(terminalSessionId);
+            // 写入 chatSessionId → terminalSessionId 映射，供 ToolContext 回查
+            SshExecuteAdkTool.setTerminalSession(dynamicContext.getSessionId(), terminalSessionId);
         }
 
         // 5. 构建动态上下文并注入用户消息（Phase 4: 传入搜索上下文）
@@ -292,7 +295,9 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
             dynamicContext.setErrorMessage(errorBuilder.toString());
             dynamicContext.setStopReason("error");
         } finally {
-            // 清除终端会话绑定
+            // 仅清除 ThreadLocal（线程隔离清理），不清除 sessionTerminalMapping
+            // mapping 的生命周期由 bindTerminal / unbindTerminal 管理，这里不能清除，
+            // 否则下次发消息时如果客户端 activeTerminalSessionId 为 null，工具就找不到 session
             if (terminalSessionId != null && !terminalSessionId.isEmpty()) {
                 SshExecuteAdkTool.clearCurrentTerminalSession();
                 SshExecuteMcpService.clearCurrentTerminalSession();

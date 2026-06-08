@@ -126,6 +126,9 @@ public class TerminalSessionPort implements ITerminalSessionPort {
     @Override
     public void write(String sessionId, String command) {
         OutputStream out = outputStreams.get(sessionId);
+        log.info("[Diag] TerminalPort.write id={} outFound={} channelConnected={}",
+                sessionId, out != null,
+                channels.get(sessionId) != null && channels.get(sessionId).isConnected());
         if (out == null) {
             throw new IllegalArgumentException("终端会话不存在或已关闭 sessionId=" + sessionId);
         }
@@ -244,7 +247,10 @@ public class TerminalSessionPort implements ITerminalSessionPort {
     @Override
     public boolean sessionExists(String sessionId) {
         ChannelShell channel = channels.get(sessionId);
-        return channel != null && channel.isConnected();
+        boolean connected = channel != null && channel.isConnected();
+        log.info("[Diag] TerminalPort.sessionExists id={} channelFound={} connected={}",
+                sessionId, channel != null, connected);
+        return connected;
     }
 
     // ========== 内部方法 ==========

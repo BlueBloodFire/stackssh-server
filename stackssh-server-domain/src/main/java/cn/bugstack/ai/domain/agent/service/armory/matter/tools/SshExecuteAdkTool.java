@@ -2,6 +2,7 @@ package cn.bugstack.ai.domain.agent.service.armory.matter.tools;
 
 import cn.bugstack.ai.domain.ssh.service.ISshTerminalService;
 import com.google.adk.tools.Annotations.Schema;
+import com.google.adk.tools.ToolContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -92,14 +93,43 @@ public class SshExecuteAdkTool {
      */
     public Map<String, Object> executeCommand(
             @Schema(name = "command", description = "要执行的 Shell 命令，如: ls -la, apt install docker.io, docker --version")
-            String command) {
-        
-        // 优先从 ThreadLocal 获取，支持异步线程继承
+            String command,
+            // ADK 自动注入 ToolContext（参数名 toolContext 是 ADK 约定，不暴露给 AI）
+            @Schema(name = "toolContext") ToolContext toolContext) {
+
+        // 1. 优先从 ThreadLocal 获取（同线程调用时有效）
         String terminalSessionId = currentTerminalSession.get();
-        
-        log.info("[executeCommand] thread={}, terminalSessionId={}, command={}", 
+
+        log.info("[executeCommand] 诊断 thread={} toolContext={} ThreadLocal={} mappingSize={}",
+                Thread.currentThread().getName(),
+                toolContext != null ? toolContext.getClass().getSimpleName() : "null",
+                terminalSessionId,
+                sessionTerminalMapping.size());
+
+        // 2. ThreadLocal 为空时（ADK 在 RxJava 线程池中调用，不继承 ThreadLocal），
+        //    通过 ToolContext 拿到 ADK session ID，再从静态 mapping 查找 terminalSessionId
+        if ((terminalSessionId == null || terminalSessionId.isEmpty()) && toolContext != null) {
+            try {
+                String chatSessionId = toolContext.invocationContext().session().id();
+                log.info("[executeCommand] ToolContext chatSessionId={}, mappingKeys={}",
+                        chatSessionId, sessionTerminalMapping.keySet());
+                terminalSessionId = getTerminalSession(chatSessionId);
+                if (terminalSessionId != null) {
+                    log.info("[executeCommand] ThreadLocal 未命中，从 session mapping 恢复: chatSession={} terminalSession={}",
+                            chatSessionId, terminalSessionId);
+                } else {
+                    log.warn("[executeCommand] session mapping 中未找到: chatSessionId={}", chatSessionId);
+                }
+            } catch (Exception e) {
+                log.warn("[executeCommand] 从 ToolContext 获取 session 失败: {}", e.getMessage(), e);
+            }
+        } else if (terminalSessionId == null || terminalSessionId.isEmpty()) {
+            log.warn("[executeCommand] ThreadLocal 为空且 toolContext 为 null，无法恢复 session");
+        }
+
+        log.info("[executeCommand] thread={}, terminalSessionId={}, command={}",
                 Thread.currentThread().getName(), terminalSessionId, command);
-        
+
         if (terminalSessionId == null || terminalSessionId.isEmpty()) {
             log.warn("[executeCommand] 终端会话ID为空，无法执行命令");
             return Map.of(

@@ -5,6 +5,7 @@ import cn.bugstack.ai.domain.ssh.adapter.port.ISshSessionPort;
 import cn.bugstack.ai.domain.ssh.model.entity.SshConnectionEntity;
 import cn.bugstack.ai.domain.ssh.model.entity.SshConnectionConfigEntity;
 import cn.bugstack.ai.domain.ssh.model.valobj.ConnectionStatusEnum;
+import cn.bugstack.ai.domain.ssh.service.ISshTerminalService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -22,10 +23,13 @@ public class SshConnectionService implements ISshConnectionDomainService {
 
     private final ISshConnectionRepository repository;
     private final ISshSessionPort sshSessionService;
+    private final ISshTerminalService sshTerminalService;
 
-    public SshConnectionService(ISshConnectionRepository repository, ISshSessionPort sshSessionService) {
+    public SshConnectionService(ISshConnectionRepository repository, ISshSessionPort sshSessionService,
+                                ISshTerminalService sshTerminalService) {
         this.repository = repository;
         this.sshSessionService = sshSessionService;
+        this.sshTerminalService = sshTerminalService;
     }
 
     @Override
@@ -152,10 +156,17 @@ public class SshConnectionService implements ISshConnectionDomainService {
 
     @Override
     public void disconnect(String connectionId) {
-        // 1. 断开 SSH 连接
+        // 1. 关闭该连接下所有终端 session（防止 channel 死掉但 cache 残留）
+        try {
+            sshTerminalService.closeTerminalsByConnection(connectionId);
+        } catch (Exception e) {
+            log.warn("清理终端 session 失败 connectionId={}", connectionId, e);
+        }
+
+        // 2. 断开 SSH 连接
         sshSessionService.disconnect(connectionId);
 
-        // 2. 更新连接状态
+        // 3. 更新连接状态
         SshConnectionEntity entity = repository.queryConnectionById(connectionId);
         if (entity != null) {
             entity.setStatus(ConnectionStatusEnum.DISCONNECTED);

@@ -16,7 +16,7 @@
     </resultMap>
 
     <insert id="insert" parameterType="cn.bugstack.ai.infrastructure.dao.po.TerminalRecordingPO" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO terminal_recording (recording_id, connection_id, session_id, cols, rows, status, started_at)
+        INSERT INTO terminal_recording (recording_id, connection_id, session_id, cols, `rows`, status, started_at)
         VALUES (#{recordingId}, #{connectionId}, #{sessionId}, #{cols}, #{rows}, #{status}, now())
     </insert>
 
@@ -27,13 +27,13 @@
     </update>
 
     <select id="queryByRecordingId" resultMap="recordingMap">
-        SELECT id, recording_id, connection_id, session_id, cols, rows, status, started_at, ended_at, duration_ms
+        SELECT id, recording_id, connection_id, session_id, cols, `rows`, status, started_at, ended_at, duration_ms
         FROM terminal_recording
         WHERE recording_id = #{recordingId}
     </select>
 
     <select id="queryByConnectionId" resultMap="recordingMap">
-        SELECT id, recording_id, connection_id, session_id, cols, rows, status, started_at, ended_at, duration_ms
+        SELECT id, recording_id, connection_id, session_id, cols, `rows`, status, started_at, ended_at, duration_ms
         FROM terminal_recording
         WHERE connection_id = #{connectionId}
         ORDER BY started_at DESC
