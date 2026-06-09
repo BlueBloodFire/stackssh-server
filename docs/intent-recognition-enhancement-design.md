@@ -1,148 +1,148 @@
-# WaLiSSH 意图识别增强方案 — 技术设计文档
+﻿# StackSSH 鎰忓浘璇嗗埆澧炲己鏂规 鈥?鎶€鏈璁℃枃妗?
 
-> 基于 WaLiCode 上下文记忆与意图识别架构，适配 WaLiSSH 的 Spring Boot DDD + Google ADK 技术栈。
+> 鍩轰簬 StackSSH 涓婁笅鏂囪蹇嗕笌鎰忓浘璇嗗埆鏋舵瀯锛岄€傞厤 StackSSH 鐨?Spring Boot DDD + Google ADK 鎶€鏈爤銆?
 
 ---
 
-## 一、设计背景与目标
+## 涓€銆佽璁¤儗鏅笌鐩爣
 
-### 1.1 现状问题
+### 1.1 鐜扮姸闂
 
-WaLiSSH 当前存在以下能力缺口：
+StackSSH 褰撳墠瀛樺湪浠ヤ笅鑳藉姏缂哄彛锛?
 
-| 维度 | 现状 | 问题 |
+| 缁村害 | 鐜扮姸 | 闂 |
 |------|------|------|
-| **System Prompt** | YAML 静态 `instruction` 字段 | 无法在运行时注入环境信息、历史上下文、用户意图等动态内容 |
-| **消息历史管理** | ADK `InMemoryRunner` 内存管理，无裁剪 | 对话轮次增加后 context 持续增长，可能超出模型 context window |
-| **意图识别** | 无 | Agent 无法提前感知用户意图，无法主动准备相关上下文 |
-| **意图增强** | 无 | 用户输入中的服务名、文件路径、错误码等信号未被提取利用 |
-| **会话持久化** | 仅内存，重启丢失 | 对话历史无法跨重启保留 |
-| **上下文感知** | ThreadLocal 终端会话绑定 | 仅有终端绑定，缺乏终端状态、命令历史等环境感知 |
+| **System Prompt** | YAML 闈欐€?`instruction` 瀛楁 | 鏃犳硶鍦ㄨ繍琛屾椂娉ㄥ叆鐜淇℃伅銆佸巻鍙蹭笂涓嬫枃銆佺敤鎴锋剰鍥剧瓑鍔ㄦ€佸唴瀹?|
+| **娑堟伅鍘嗗彶绠＄悊** | ADK `InMemoryRunner` 鍐呭瓨绠＄悊锛屾棤瑁佸壀 | 瀵硅瘽杞澧炲姞鍚?context 鎸佺画澧為暱锛屽彲鑳借秴鍑烘ā鍨?context window |
+| **鎰忓浘璇嗗埆** | 鏃?| Agent 鏃犳硶鎻愬墠鎰熺煡鐢ㄦ埛鎰忓浘锛屾棤娉曚富鍔ㄥ噯澶囩浉鍏充笂涓嬫枃 |
+| **鎰忓浘澧炲己** | 鏃?| 鐢ㄦ埛杈撳叆涓殑鏈嶅姟鍚嶃€佹枃浠惰矾寰勩€侀敊璇爜绛変俊鍙锋湭琚彁鍙栧埄鐢?|
+| **浼氳瘽鎸佷箙鍖?* | 浠呭唴瀛橈紝閲嶅惎涓㈠け | 瀵硅瘽鍘嗗彶鏃犳硶璺ㄩ噸鍚繚鐣?|
+| **涓婁笅鏂囨劅鐭?* | ThreadLocal 缁堢浼氳瘽缁戝畾 | 浠呮湁缁堢缁戝畾锛岀己涔忕粓绔姸鎬併€佸懡浠ゅ巻鍙茬瓑鐜鎰熺煡 |
 
-### 1.2 设计目标
+### 1.2 璁捐鐩爣
 
-1. **动态 Prompt 构建**：System Prompt 从"静态 YAML"升级为"运行时动态组装"
-2. **上下文记忆管理**：实现 Provider-Reducer 管道，解决 context 超限问题
-3. **意图识别系统**：两层分类器链（规则 + LLM），适配 SSH 运维场景
-4. **意图增强**：信号提取 → 服务器上下文搜索 → Prompt 注入
-5. **会话持久化**：MySQL 持久化 + Redis 缓存，服务重启不丢失
+1. **鍔ㄦ€?Prompt 鏋勫缓**锛歋ystem Prompt 浠?闈欐€?YAML"鍗囩骇涓?杩愯鏃跺姩鎬佺粍瑁?
+2. **涓婁笅鏂囪蹇嗙鐞?*锛氬疄鐜?Provider-Reducer 绠￠亾锛岃В鍐?context 瓒呴檺闂
+3. **鎰忓浘璇嗗埆绯荤粺**锛氫袱灞傚垎绫诲櫒閾撅紙瑙勫垯 + LLM锛夛紝閫傞厤 SSH 杩愮淮鍦烘櫙
+4. **鎰忓浘澧炲己**锛氫俊鍙锋彁鍙?鈫?鏈嶅姟鍣ㄤ笂涓嬫枃鎼滅储 鈫?Prompt 娉ㄥ叆
+5. **浼氳瘽鎸佷箙鍖?*锛歁ySQL 鎸佷箙鍖?+ Redis 缂撳瓨锛屾湇鍔￠噸鍚笉涓㈠け
 
-### 1.3 WaLiCode 设计范式参考
+### 1.3 StackSSH 璁捐鑼冨紡鍙傝€?
 
-WaLiCode 的核心设计思想：
+StackSSH 鐨勬牳蹇冭璁℃€濇兂锛?
 
-- **Provider-Reducer 管道模式**：上下文收集（Provider）与消息裁剪（Reducer）解耦
-- **三层意图分类器链**：规则（快但粗）→ 模型（中等）→ LLM（慢但准），逐级升级
-- **"信号提取 → 代码搜索 → LLM 决策"增强范式**：关键词只做信息提取，不做决策
-- **里程碑系统**：独立于消息裁剪的关键事件记忆
+- **Provider-Reducer 绠￠亾妯″紡**锛氫笂涓嬫枃鏀堕泦锛圥rovider锛変笌娑堟伅瑁佸壀锛圧educer锛夎В鑰?
+- **涓夊眰鎰忓浘鍒嗙被鍣ㄩ摼**锛氳鍒欙紙蹇絾绮楋級鈫?妯″瀷锛堜腑绛夛級鈫?LLM锛堟參浣嗗噯锛夛紝閫愮骇鍗囩骇
+- **"淇″彿鎻愬彇 鈫?浠ｇ爜鎼滅储 鈫?LLM 鍐崇瓥"澧炲己鑼冨紡**锛氬叧閿瘝鍙仛淇℃伅鎻愬彇锛屼笉鍋氬喅绛?
+- **閲岀▼纰戠郴缁?*锛氱嫭绔嬩簬娑堟伅瑁佸壀鐨勫叧閿簨浠惰蹇?
 
 ---
 
-## 二、总体架构
+## 浜屻€佹€讳綋鏋舵瀯
 
-### 2.1 架构总览
+### 2.1 鏋舵瀯鎬昏
 
 ```
-用户输入 "nginx 502了，帮我排查"
-    │
-    ▼
+鐢ㄦ埛杈撳叆 "nginx 502浜嗭紝甯垜鎺掓煡"
+    鈹?
+    鈻?
 [AgentServiceController.chatStream()]
-    │
-    ▼
+    鈹?
+    鈻?
 [AIAgentReActServiceCase.chatStream()]
-    │
-    ├─ ① IIntentService.classify()                    意图识别
-    │     ├─ RuleIntentClassifier  → DIAGNOSE (0.7)
-    │     └─ LLMIntentClassifier   → DIAGNOSE (0.95)
-    │
-    ├─ ② IIntentEnhancerService.enhance()             意图增强
-    │     ├─ SignalExtractor  → {services: ["nginx"], errors: ["502"]}
-    │     └─ ContextSearch    → {nginx_status: "failed", logs: "..."}
-    │
-    ├─ ③ IChatContextService.buildContext()           上下文管理
-    │     ├─ TerminalStateProvider  → {os: "Ubuntu 22.04", user: "root"}
-    │     ├─ MilestoneProvider      → [{type: ERROR, content: "..."}]
-    │     ├─ ToolResultProvider     → {summary: "已安装 nginx 1.24"}
-    │     └─ HybridReducer          → 裁剪到 token 预算内
-    │
-    ├─ ④ IPromptService.buildEnrichedMessage()         动态 Prompt (领域服务)
-    │     ├─ TerminalState采集 (ISshTerminalService)
-    │     ├─ MilestoneTracker (记录与获取关键事件)
-    │     └─ DynamicPromptBuilder (基础 instruction + 环境信息 + 意图分析 + 上下文)
-    │
-    └─ ⑤ AiCallNode → runner.runAsync()               ADK 调用
-          │
-          ▼
-        LLM 返回 → 工具调用 → 结果 → promptService.detectAndRecordMilestone() → 流式输出
+    鈹?
+    鈹溾攢 鈶?IIntentService.classify()                    鎰忓浘璇嗗埆
+    鈹?    鈹溾攢 RuleIntentClassifier  鈫?DIAGNOSE (0.7)
+    鈹?    鈹斺攢 LLMIntentClassifier   鈫?DIAGNOSE (0.95)
+    鈹?
+    鈹溾攢 鈶?IIntentEnhancerService.enhance()             鎰忓浘澧炲己
+    鈹?    鈹溾攢 SignalExtractor  鈫?{services: ["nginx"], errors: ["502"]}
+    鈹?    鈹斺攢 ContextSearch    鈫?{nginx_status: "failed", logs: "..."}
+    鈹?
+    鈹溾攢 鈶?IChatContextService.buildContext()           涓婁笅鏂囩鐞?
+    鈹?    鈹溾攢 TerminalStateProvider  鈫?{os: "Ubuntu 22.04", user: "root"}
+    鈹?    鈹溾攢 MilestoneProvider      鈫?[{type: ERROR, content: "..."}]
+    鈹?    鈹溾攢 ToolResultProvider     鈫?{summary: "宸插畨瑁?nginx 1.24"}
+    鈹?    鈹斺攢 HybridReducer          鈫?瑁佸壀鍒?token 棰勭畻鍐?
+    鈹?
+    鈹溾攢 鈶?IPromptService.buildEnrichedMessage()         鍔ㄦ€?Prompt (棰嗗煙鏈嶅姟)
+    鈹?    鈹溾攢 TerminalState閲囬泦 (ISshTerminalService)
+    鈹?    鈹溾攢 MilestoneTracker (璁板綍涓庤幏鍙栧叧閿簨浠?
+    鈹?    鈹斺攢 DynamicPromptBuilder (鍩虹 instruction + 鐜淇℃伅 + 鎰忓浘鍒嗘瀽 + 涓婁笅鏂?
+    鈹?
+    鈹斺攢 鈶?AiCallNode 鈫?runner.runAsync()               ADK 璋冪敤
+          鈹?
+          鈻?
+        LLM 杩斿洖 鈫?宸ュ叿璋冪敤 鈫?缁撴灉 鈫?promptService.detectAndRecordMilestone() 鈫?娴佸紡杈撳嚭
 ```
 
-### 2.2 新增模块目录结构
+### 2.2 鏂板妯″潡鐩綍缁撴瀯
 
 ```
-walissh-server-domain/src/main/java/cn/bugstack/ai/domain/agent/
-├── service/
-│   ├── IChatContextService.java              上下文管理领域服务接口
-│   ├── IIntentService.java                   意图识别领域服务接口
-│   ├── IIntentEnhancerService.java           意图增强领域服务接口
-│   ├── IPromptService.java                   提示词构建领域服务接口
-│   ├── armory/                               智能体装配（google adk）
-│   ├── context/                              上下文记忆服务实现包
-│   │   ├── ChatContextService.java           领域服务实现
-│   │   ├── provider/
-│   │   │   ├── ContextProvider.java          Provider 接口
-│   │   │   ├── TerminalStateProvider.java    终端状态（OS、用户、目录）
-│   │   │   ├── TaskProvider.java             当前任务
-│   │   │   ├── MilestoneProvider.java        里程碑事件
-│   │   │   └── ToolResultProvider.java       工具结果摘要
-│   │   └── reducer/
-│   │       ├── MessageReducer.java           Reducer 接口
-│   │       ├── PriorityReducer.java          优先级裁剪
-│   │       ├── SlidingWindowReducer.java     滑动窗口裁剪
-│   │       └── HybridReducer.java            混合裁剪（默认）
-│   ├── intent/                               意图识别服务实现包
-│   │   ├── IntentService.java                领域服务实现
-│   │   ├── ContextTracker.java               对话上下文追踪器 (内部组件)
-│   │   └── classifier/
-│   │       ├── IntentClassifier.java         分类器接口
-│   │       ├── RuleIntentClassifier.java     第1层：规则分类
-│   │       └── LLMIntentClassifier.java      第2层：LLM 分类
-│   ├── enhance/                              意图增强服务实现包
-│   │   ├── IntentEnhancerService.java        领域服务实现
-│   │   └── processor/
-│   │       ├── SignalExtractor.java          信号提取 (内部组件)
-│   │       └── ContextSearch.java            服务器上下文搜索 (内部组件)
-│   ├── prompt/                               提示词构建服务实现包
-│   │   ├── PromptService.java                领域服务实现
-│   │   └── dynamic/
-│   │       ├── DynamicPromptBuilder.java     动态 Prompt 组装器 (内部组件)
-│   │       └── MilestoneTracker.java         里程碑追踪器 (内部组件)
-├── model/
-│   ├── valobj/
-│   │   ├── prompt/
-│   │   │   ├── PromptContextVO.java          Prompt 上下文值对象
-│   │   │   └── MilestoneVO.java              里程碑
-│   │   ├── IntentResult.java                 意图识别结果
-│   │   ├── ExtractedSignals.java             提取的信号
-│   │   ├── SearchContext.java                搜索上下文
-│   │   └── ConversationContext.java          对话上下文
-│   └── entity/
-│       └── ChatMessageEntity.java            对话消息实体
-└── adaper/
-    └── IChatHistoryRepository.java              对话历史持久化网关接口
+StackSSH-server-domain/src/main/java/cn/stackssh/domain/agent/
+鈹溾攢鈹€ service/
+鈹?  鈹溾攢鈹€ IChatContextService.java              涓婁笅鏂囩鐞嗛鍩熸湇鍔℃帴鍙?
+鈹?  鈹溾攢鈹€ IIntentService.java                   鎰忓浘璇嗗埆棰嗗煙鏈嶅姟鎺ュ彛
+鈹?  鈹溾攢鈹€ IIntentEnhancerService.java           鎰忓浘澧炲己棰嗗煙鏈嶅姟鎺ュ彛
+鈹?  鈹溾攢鈹€ IPromptService.java                   鎻愮ず璇嶆瀯寤洪鍩熸湇鍔℃帴鍙?
+鈹?  鈹溾攢鈹€ armory/                               鏅鸿兘浣撹閰嶏紙google adk锛?
+鈹?  鈹溾攢鈹€ context/                              涓婁笅鏂囪蹇嗘湇鍔″疄鐜板寘
+鈹?  鈹?  鈹溾攢鈹€ ChatContextService.java           棰嗗煙鏈嶅姟瀹炵幇
+鈹?  鈹?  鈹溾攢鈹€ provider/
+鈹?  鈹?  鈹?  鈹溾攢鈹€ ContextProvider.java          Provider 鎺ュ彛
+鈹?  鈹?  鈹?  鈹溾攢鈹€ TerminalStateProvider.java    缁堢鐘舵€侊紙OS銆佺敤鎴枫€佺洰褰曪級
+鈹?  鈹?  鈹?  鈹溾攢鈹€ TaskProvider.java             褰撳墠浠诲姟
+鈹?  鈹?  鈹?  鈹溾攢鈹€ MilestoneProvider.java        閲岀▼纰戜簨浠?
+鈹?  鈹?  鈹?  鈹斺攢鈹€ ToolResultProvider.java       宸ュ叿缁撴灉鎽樿
+鈹?  鈹?  鈹斺攢鈹€ reducer/
+鈹?  鈹?      鈹溾攢鈹€ MessageReducer.java           Reducer 鎺ュ彛
+鈹?  鈹?      鈹溾攢鈹€ PriorityReducer.java          浼樺厛绾ц鍓?
+鈹?  鈹?      鈹溾攢鈹€ SlidingWindowReducer.java     婊戝姩绐楀彛瑁佸壀
+鈹?  鈹?      鈹斺攢鈹€ HybridReducer.java            娣峰悎瑁佸壀锛堥粯璁わ級
+鈹?  鈹溾攢鈹€ intent/                               鎰忓浘璇嗗埆鏈嶅姟瀹炵幇鍖?
+鈹?  鈹?  鈹溾攢鈹€ IntentService.java                棰嗗煙鏈嶅姟瀹炵幇
+鈹?  鈹?  鈹溾攢鈹€ ContextTracker.java               瀵硅瘽涓婁笅鏂囪拷韪櫒 (鍐呴儴缁勪欢)
+鈹?  鈹?  鈹斺攢鈹€ classifier/
+鈹?  鈹?      鈹溾攢鈹€ IntentClassifier.java         鍒嗙被鍣ㄦ帴鍙?
+鈹?  鈹?      鈹溾攢鈹€ RuleIntentClassifier.java     绗?灞傦細瑙勫垯鍒嗙被
+鈹?  鈹?      鈹斺攢鈹€ LLMIntentClassifier.java      绗?灞傦細LLM 鍒嗙被
+鈹?  鈹溾攢鈹€ enhance/                              鎰忓浘澧炲己鏈嶅姟瀹炵幇鍖?
+鈹?  鈹?  鈹溾攢鈹€ IntentEnhancerService.java        棰嗗煙鏈嶅姟瀹炵幇
+鈹?  鈹?  鈹斺攢鈹€ processor/
+鈹?  鈹?      鈹溾攢鈹€ SignalExtractor.java          淇″彿鎻愬彇 (鍐呴儴缁勪欢)
+鈹?  鈹?      鈹斺攢鈹€ ContextSearch.java            鏈嶅姟鍣ㄤ笂涓嬫枃鎼滅储 (鍐呴儴缁勪欢)
+鈹?  鈹溾攢鈹€ prompt/                               鎻愮ず璇嶆瀯寤烘湇鍔″疄鐜板寘
+鈹?  鈹?  鈹溾攢鈹€ PromptService.java                棰嗗煙鏈嶅姟瀹炵幇
+鈹?  鈹?  鈹斺攢鈹€ dynamic/
+鈹?  鈹?      鈹溾攢鈹€ DynamicPromptBuilder.java     鍔ㄦ€?Prompt 缁勮鍣?(鍐呴儴缁勪欢)
+鈹?  鈹?      鈹斺攢鈹€ MilestoneTracker.java         閲岀▼纰戣拷韪櫒 (鍐呴儴缁勪欢)
+鈹溾攢鈹€ model/
+鈹?  鈹溾攢鈹€ valobj/
+鈹?  鈹?  鈹溾攢鈹€ prompt/
+鈹?  鈹?  鈹?  鈹溾攢鈹€ PromptContextVO.java          Prompt 涓婁笅鏂囧€煎璞?
+鈹?  鈹?  鈹?  鈹斺攢鈹€ MilestoneVO.java              閲岀▼纰?
+鈹?  鈹?  鈹溾攢鈹€ IntentResult.java                 鎰忓浘璇嗗埆缁撴灉
+鈹?  鈹?  鈹溾攢鈹€ ExtractedSignals.java             鎻愬彇鐨勪俊鍙?
+鈹?  鈹?  鈹溾攢鈹€ SearchContext.java                鎼滅储涓婁笅鏂?
+鈹?  鈹?  鈹斺攢鈹€ ConversationContext.java          瀵硅瘽涓婁笅鏂?
+鈹?  鈹斺攢鈹€ entity/
+鈹?      鈹斺攢鈹€ ChatMessageEntity.java            瀵硅瘽娑堟伅瀹炰綋
+鈹斺攢鈹€ adaper/
+    鈹斺攢鈹€ IChatHistoryRepository.java              瀵硅瘽鍘嗗彶鎸佷箙鍖栫綉鍏虫帴鍙?
 ```
 
 ---
 
-## 三、Phase 1：动态 Prompt 构建
+## 涓夈€丳hase 1锛氬姩鎬?Prompt 鏋勫缓
 
-### 3.1 设计说明
+### 3.1 璁捐璇存槑
 
-当前 System Prompt 完全来自 YAML 的 `instruction` 静态文本，无法在运行时注入环境信息、历史上下文等动态内容。本阶段引入 `IPromptService` 领域服务，在调用 LLM 前动态组装完整 Prompt。为符合 DDD 规范，Case 层（`AiCallNode`）仅依赖 `IPromptService` 接口，而不直接依赖 `DynamicPromptBuilder`、`MilestoneTracker` 等内部组件。
+褰撳墠 System Prompt 瀹屽叏鏉ヨ嚜 YAML 鐨?`instruction` 闈欐€佹枃鏈紝鏃犳硶鍦ㄨ繍琛屾椂娉ㄥ叆鐜淇℃伅銆佸巻鍙蹭笂涓嬫枃绛夊姩鎬佸唴瀹广€傛湰闃舵寮曞叆 `IPromptService` 棰嗗煙鏈嶅姟锛屽湪璋冪敤 LLM 鍓嶅姩鎬佺粍瑁呭畬鏁?Prompt銆備负绗﹀悎 DDD 瑙勮寖锛孋ase 灞傦紙`AiCallNode`锛変粎渚濊禆 `IPromptService` 鎺ュ彛锛岃€屼笉鐩存帴渚濊禆 `DynamicPromptBuilder`銆乣MilestoneTracker` 绛夊唴閮ㄧ粍浠躲€?
 
-### 3.2 领域模型 (Value Objects)
+### 3.2 棰嗗煙妯″瀷 (Value Objects)
 
 ```java
-package cn.bugstack.ai.domain.agent.model.valobj.prompt;
+package cn.stackssh.domain.agent.model.valobj.prompt;
 
 import lombok.Builder;
 import lombok.Data;
@@ -160,20 +160,20 @@ public class PromptContextVO {
     private List<String> recentCommands;
     private List<MilestoneVO> milestoneVOS;
 
-    // 后续 Phase 扩展
+    // 鍚庣画 Phase 鎵╁睍
     // private IntentResult intentResult;
     // private Map<String, String> serviceStatus;
 }
 ```
 
-### 3.3 领域服务 (Domain Service)
+### 3.3 棰嗗煙鏈嶅姟 (Domain Service)
 
-#### IPromptService 接口
+#### IPromptService 鎺ュ彛
 
-暴露给 Case 层的统一门面：
+鏆撮湶缁?Case 灞傜殑缁熶竴闂ㄩ潰锛?
 
 ```java
-package cn.bugstack.ai.domain.agent.service;
+package cn.stackssh.domain.agent.service;
 
 public interface IPromptService {
     void detectAndRecordMilestone(String sessionId, String role, String content);
@@ -182,12 +182,12 @@ public interface IPromptService {
 }
 ```
 
-#### PromptService 实现
+#### PromptService 瀹炵幇
 
-组合内部组件：
+缁勫悎鍐呴儴缁勪欢锛?
 
 ```java
-package cn.bugstack.ai.domain.agent.service.prompt;
+package cn.stackssh.domain.agent.service.prompt;
 
 @Service
 public class PromptService implements IPromptService {
@@ -197,55 +197,55 @@ public class PromptService implements IPromptService {
 
     @Override
     public String buildEnrichedMessage(String userMessage, String sessionId, String terminalSessionId, List<String> recentCommands) {
-        // 1. 从 SSH 终端采集环境信息
-        // 2. 从 milestoneTracker 获取事件
-        // 3. 构建 PromptContextVO
-        // 4. 调用 dynamicPromptBuilder.buildMessagePrefix() 生成前缀
-        // 5. 拼接返回
+        // 1. 浠?SSH 缁堢閲囬泦鐜淇℃伅
+        // 2. 浠?milestoneTracker 鑾峰彇浜嬩欢
+        // 3. 鏋勫缓 PromptContextVO
+        // 4. 璋冪敤 dynamicPromptBuilder.buildMessagePrefix() 鐢熸垚鍓嶇紑
+        // 5. 鎷兼帴杩斿洖
     }
     
-    // ... 其他方法委托给 tracker
+    // ... 鍏朵粬鏂规硶濮旀墭缁?tracker
 }
 ```
 
-### 3.4 动态组装器 (DynamicPromptBuilder)
+### 3.4 鍔ㄦ€佺粍瑁呭櫒 (DynamicPromptBuilder)
 
 ```java
-package cn.bugstack.ai.domain.agent.service.prompt.dynamic;
+package cn.stackssh.domain.agent.service.prompt.dynamic;
 
 @Component
 public class DynamicPromptBuilder {
     /**
-     * 将动态上下文构建为用户消息前缀（注入到用户消息中）
-     * 适用于 ADK 无法直接在运行时修改 system instruction 的场景
+     * 灏嗗姩鎬佷笂涓嬫枃鏋勫缓涓虹敤鎴锋秷鎭墠缂€锛堟敞鍏ュ埌鐢ㄦ埛娑堟伅涓級
+     * 閫傜敤浜?ADK 鏃犳硶鐩存帴鍦ㄨ繍琛屾椂淇敼 system instruction 鐨勫満鏅?
      */
     public String buildMessagePrefix(PromptContextVO ctx) {
         if (ctx == null) return "";
         StringBuilder sb = new StringBuilder();
         
-        // 拼接 [系统环境]
-        // 拼接 [最近执行的命令]
-        // 拼接 [关键事件] (Milestones)
+        // 鎷兼帴 [绯荤粺鐜]
+        // 鎷兼帴 [鏈€杩戞墽琛岀殑鍛戒护]
+        // 鎷兼帴 [鍏抽敭浜嬩欢] (Milestones)
         
         return sb.toString();
     }
 }
 ```
 
-### 3.5 改造 AiCallNode (Case 层)
+### 3.5 鏀归€?AiCallNode (Case 灞?
 
-在 `AiCallNode` 中，仅注入 `IPromptService`：
+鍦?`AiCallNode` 涓紝浠呮敞鍏?`IPromptService`锛?
 
 ```java
-// AiCallNode.java 改造点
+// AiCallNode.java 鏀归€犵偣
 @Resource
 private IPromptService promptService;
 
 private String buildEnrichedMessage(String userMessage, DynamicContext dynamicContext) {
-    // 记录用户消息的里程碑
+    // 璁板綍鐢ㄦ埛娑堟伅鐨勯噷绋嬬
     promptService.detectAndRecordMilestone(dynamicContext.getSessionId(), "user", userMessage);
 
-    // 委托领域服务构建富化消息
+    // 濮旀墭棰嗗煙鏈嶅姟鏋勫缓瀵屽寲娑堟伅
     return promptService.buildEnrichedMessage(
             userMessage,
             dynamicContext.getSessionId(),
@@ -254,22 +254,22 @@ private String buildEnrichedMessage(String userMessage, DynamicContext dynamicCo
     );
 }
 
-// 在工具执行结果回调处：
+// 鍦ㄥ伐鍏锋墽琛岀粨鏋滃洖璋冨锛?
 promptService.detectAndRecordMilestone(dynamicContext.getSessionId(), "tool", resultContent);
 ```
 
 ---
 
-## 四、Phase 2：上下文记忆管理
+## 鍥涖€丳hase 2锛氫笂涓嬫枃璁板繂绠＄悊
 
-### 4.1 设计说明
+### 4.1 璁捐璇存槑
 
-采用 WaLiCode 的 **Provider-Reducer 管道模式**，将上下文收集与消息裁剪解耦。Provider 负责收集各维度上下文，Reducer 负责在 token 预算内裁剪消息。
+閲囩敤 StackSSH 鐨?**Provider-Reducer 绠￠亾妯″紡**锛屽皢涓婁笅鏂囨敹闆嗕笌娑堟伅瑁佸壀瑙ｈ€︺€侾rovider 璐熻矗鏀堕泦鍚勭淮搴︿笂涓嬫枃锛孯educer 璐熻矗鍦?token 棰勭畻鍐呰鍓秷鎭€?
 
-### 4.2 ContextProvider 接口
+### 4.2 ContextProvider 鎺ュ彛
 
 ```java
-package cn.bugstack.ai.domain.agent.service.context.provider;
+package cn.stackssh.domain.agent.service.context.provider;
 
 import java.util.Map;
 
@@ -281,11 +281,11 @@ public interface ContextProvider {
 }
 ```
 
-### 4.3 四个 Provider 实现
+### 4.3 鍥涗釜 Provider 瀹炵幇
 
-#### TerminalStateProvider（order=10）
+#### TerminalStateProvider锛坥rder=10锛?
 
-提供当前终端的系统环境信息：
+鎻愪緵褰撳墠缁堢鐨勭郴缁熺幆澧冧俊鎭細
 
 ```java
 @Component
@@ -319,9 +319,9 @@ public class TerminalStateProvider implements ContextProvider {
 }
 ```
 
-#### TaskProvider（order=20）
+#### TaskProvider锛坥rder=20锛?
 
-提取当前对话中的任务描述：
+鎻愬彇褰撳墠瀵硅瘽涓殑浠诲姟鎻忚堪锛?
 
 ```java
 @Component
@@ -333,7 +333,7 @@ public class TaskProvider implements ContextProvider {
     @Override
     public Map<String, Object> provide(String sessionId, String userId) {
         Map<String, Object> result = new HashMap<>();
-        // 从 DynamicContext.messageHistory 中提取第一条用户消息作为任务描述
+        // 浠?DynamicContext.messageHistory 涓彁鍙栫涓€鏉＄敤鎴锋秷鎭綔涓轰换鍔℃弿杩?
         List<Map<String, Object>> history = messageHistoryCache.get(sessionId);
         if (history != null) {
             history.stream()
@@ -346,9 +346,9 @@ public class TaskProvider implements ContextProvider {
 }
 ```
 
-#### MilestoneProvider（order=30）
+#### MilestoneProvider锛坥rder=30锛?
 
-提供不受裁剪影响的关键事件：
+鎻愪緵涓嶅彈瑁佸壀褰卞搷鐨勫叧閿簨浠讹細
 
 ```java
 @Component
@@ -370,9 +370,9 @@ public class MilestoneProvider implements ContextProvider {
 }
 ```
 
-#### ToolResultProvider（order=40）
+#### ToolResultProvider锛坥rder=40锛?
 
-工具执行结果的懒摘要策略：
+宸ュ叿鎵ц缁撴灉鐨勬噿鎽樿绛栫暐锛?
 
 ```java
 @Component
@@ -390,7 +390,7 @@ public class ToolResultProvider implements ContextProvider {
         List<ToolResultEntry> entries = results.getOrDefault(sessionId, Collections.emptyList());
         if (entries.isEmpty()) return result;
 
-        // 懒摘要：有缓存直接返回，否则重新生成
+        // 鎳掓憳瑕侊細鏈夌紦瀛樼洿鎺ヨ繑鍥烇紝鍚﹀垯閲嶆柊鐢熸垚
         String summary = summaryCache.computeIfAbsent(sessionId, id -> generateSummary(entries));
         result.put("toolResultSummary", summary);
         return result;
@@ -398,19 +398,19 @@ public class ToolResultProvider implements ContextProvider {
 
     public void pushResult(String sessionId, ToolResultEntry entry) {
         results.computeIfAbsent(sessionId, k -> new CopyOnWriteArrayList<>()).add(entry);
-        summaryCache.remove(sessionId);  // 失效摘要缓存
+        summaryCache.remove(sessionId);  // 澶辨晥鎽樿缂撳瓨
     }
 
     private String generateSummary(List<ToolResultEntry> entries) {
-        // 少量结果直接拼接，大量结果模板化压缩
+        // 灏戦噺缁撴灉鐩存帴鎷兼帴锛屽ぇ閲忕粨鏋滄ā鏉垮寲鍘嬬缉
         if (entries.size() <= 5) {
             return entries.stream()
                 .map(e -> e.getToolName() + ": " + truncate(e.getResult(), 100))
                 .collect(Collectors.joining("\n"));
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("最近执行了 ").append(entries.size()).append(" 个工具调用:\n");
-        // 只取最近 5 条详细 + 总结
+        sb.append("鏈€杩戞墽琛屼簡 ").append(entries.size()).append(" 涓伐鍏疯皟鐢?\n");
+        // 鍙彇鏈€杩?5 鏉¤缁?+ 鎬荤粨
         List<ToolResultEntry> recent = entries.subList(entries.size() - 5, entries.size());
         for (ToolResultEntry e : recent) {
             sb.append("- ").append(e.getToolName()).append(": ")
@@ -421,12 +421,12 @@ public class ToolResultProvider implements ContextProvider {
 }
 ```
 
-### 4.4 MessageReducer 裁剪策略
+### 4.4 MessageReducer 瑁佸壀绛栫暐
 
-#### 接口定义
+#### 鎺ュ彛瀹氫箟
 
 ```java
-package cn.bugstack.ai.domain.agent.service.context.reducer;
+package cn.stackssh.domain.agent.service.context.reducer;
 
 import java.util.List;
 import java.util.Map;
@@ -436,7 +436,7 @@ public interface MessageReducer {
 }
 ```
 
-#### PriorityReducer — 优先级裁剪
+#### PriorityReducer 鈥?浼樺厛绾ц鍓?
 
 ```java
 @Component
@@ -444,17 +444,17 @@ public class PriorityReducer implements MessageReducer {
 
     @Override
     public List<Map<String, Object>> reduce(List<Map<String, Object>> messages, int tokenBudget) {
-        // 为每条消息推断优先级
+        // 涓烘瘡鏉℃秷鎭帹鏂紭鍏堢骇
         List<PrioritizedMessage> prioritized = messages.stream()
             .map(m -> new PrioritizedMessage(m, inferPriority(m)))
             .collect(Collectors.toList());
 
-        // 至少保留最近 2 条
+        // 鑷冲皯淇濈暀鏈€杩?2 鏉?
         int minKeep = Math.min(2, prioritized.size());
         List<PrioritizedMessage> kept = new ArrayList<>(prioritized.subList(
             prioritized.size() - minKeep, prioritized.size()));
 
-        // 从低优先级开始丢弃，直到满足 token 预算
+        // 浠庝綆浼樺厛绾у紑濮嬩涪寮冿紝鐩村埌婊¤冻 token 棰勭畻
         int usedTokens = estimateTokens(kept);
         for (int i = prioritized.size() - minKeep - 1; i >= 0; i--) {
             PrioritizedMessage pm = prioritized.get(i);
@@ -491,7 +491,7 @@ public class PriorityReducer implements MessageReducer {
 }
 ```
 
-#### SlidingWindowReducer — 滑动窗口裁剪
+#### SlidingWindowReducer 鈥?婊戝姩绐楀彛瑁佸壀
 
 ```java
 @Component
@@ -503,7 +503,7 @@ public class SlidingWindowReducer implements MessageReducer {
         List<Map<String, Object>> window = new ArrayList<>();
         int usedTokens = 0;
 
-        // 从新到旧逐条添加，直到超出 token 预算或窗口大小
+        // 浠庢柊鍒版棫閫愭潯娣诲姞锛岀洿鍒拌秴鍑?token 棰勭畻鎴栫獥鍙ｅぇ灏?
         for (int i = messages.size() - 1; i >= 0; i--) {
             Map<String, Object> msg = messages.get(i);
             int msgTokens = estimateToken(msg);
@@ -516,7 +516,7 @@ public class SlidingWindowReducer implements MessageReducer {
 }
 ```
 
-#### HybridReducer — 混合裁剪（默认策略）
+#### HybridReducer 鈥?娣峰悎瑁佸壀锛堥粯璁ょ瓥鐣ワ級
 
 ```java
 @Component
@@ -529,11 +529,11 @@ public class HybridReducer implements MessageReducer {
         Set<Integer> priorityKeep = indexSet(priorityReducer.reduce(messages, tokenBudget), messages);
         Set<Integer> slidingKeep  = indexSet(slidingReducer.reduce(messages, tokenBudget), messages);
 
-        // 取交集
+        // 鍙栦氦闆?
         Set<Integer> keepIndices = new HashSet<>(priorityKeep);
         keepIndices.retainAll(slidingKeep);
 
-        // 保证至少有最近 2 条
+        // 淇濊瘉鑷冲皯鏈夋渶杩?2 鏉?
         int minKeep = Math.min(2, messages.size());
         for (int i = messages.size() - minKeep; i < messages.size(); i++) {
             keepIndices.add(i);
@@ -557,7 +557,7 @@ public class HybridReducer implements MessageReducer {
 }
 ```
 
-### 4.5 MilestoneTracker — 里程碑系统
+### 4.5 MilestoneTracker 鈥?閲岀▼纰戠郴缁?
 
 ```java
 @Component
@@ -569,11 +569,11 @@ public class MilestoneTracker {
         MilestoneVO.Type type = null;
 
         if ("user".equals(role)) {
-            if (matches(content, "不对|不是这样|改一下|换个思路|换种方式|错了")) {
+            if (matches(content, "涓嶅|涓嶆槸杩欐牱|鏀逛竴涓媩鎹釜鎬濊矾|鎹㈢鏂瑰紡|閿欎簡")) {
                 type = MilestoneVO.Type.TASK_CHANGE;
-            } else if (matches(content, "完成了|搞定|结束|好了")) {
+            } else if (matches(content, "瀹屾垚浜唡鎼炲畾|缁撴潫|濂戒簡")) {
                 type = MilestoneVO.Type.TASK_COMPLETE;
-            } else if (matches(content, "不要|停|别")) {
+            } else if (matches(content, "涓嶈|鍋渱鍒?)) {
                 type = MilestoneVO.Type.USER_CORRECTION;
             }
         }
@@ -624,12 +624,12 @@ public class MilestoneTracker {
 }
 ```
 
-### 4.6 IChatContextService 与 ChatContextService — 上下文管理领域服务
+### 4.6 IChatContextService 涓?ChatContextService 鈥?涓婁笅鏂囩鐞嗛鍩熸湇鍔?
 
-为符合 DDD 规范，提取统一的接口 `IChatContextService`，并在 `ChatContextService` 中编排 Provider 和 Reducer：
+涓虹鍚?DDD 瑙勮寖锛屾彁鍙栫粺涓€鐨勬帴鍙?`IChatContextService`锛屽苟鍦?`ChatContextService` 涓紪鎺?Provider 鍜?Reducer锛?
 
 ```java
-package cn.bugstack.ai.domain.agent.service;
+package cn.stackssh.domain.agent.service;
 
 public interface IChatContextService {
     PromptContextVO buildPromptContext(String sessionId, String userId, String terminalSessionId);
@@ -638,10 +638,10 @@ public interface IChatContextService {
 ```
 
 ```java
-package cn.bugstack.ai.domain.agent.service.context;
+package cn.stackssh.domain.agent.service.context;
 
-import cn.bugstack.ai.domain.agent.service.IChatContextService;
-import cn.bugstack.ai.domain.agent.service.IPromptService;
+import cn.stackssh.domain.agent.service.IChatContextService;
+import cn.stackssh.domain.agent.service.IPromptService;
 @Service
 public class ChatContextService implements IChatContextService {
     private static final int DEFAULT_MAX_CONTEXT_TOKENS = 8000;
@@ -662,7 +662,7 @@ public class ChatContextService implements IChatContextService {
 
     @Override
     public PromptContextVO buildPromptContext(String sessionId, String userId, String terminalSessionId) {
-        // 由于 Lombok Builder 的特性，我们直接通过链式调用或者临时变量存储构建
+        // 鐢变簬 Lombok Builder 鐨勭壒鎬э紝鎴戜滑鐩存帴閫氳繃閾惧紡璋冪敤鎴栬€呬复鏃跺彉閲忓瓨鍌ㄦ瀯寤?
         Map<String, Object> finalCtx = new HashMap<>();
 
         for (ContextProvider provider : providers) {
@@ -677,7 +677,7 @@ public class ChatContextService implements IChatContextService {
                 .currentDirectory((String) finalCtx.get("currentDirectory"))
                 .serverInfo((String) finalCtx.get("serverInfo"))
                 .milestoneVOS((List<MilestoneVO>) finalCtx.get("milestoneVOS"))
-                // 后续 Phase 扩展
+                // 鍚庣画 Phase 鎵╁睍
                 // .serviceStatus((Map<String, String>) finalCtx.get("serviceStatus"))
                 // .fileContents((Map<String, String>) finalCtx.get("fileContents"))
                 // .recentLogs((Map<String, String>) finalCtx.get("recentLogs"))
@@ -694,28 +694,28 @@ public class ChatContextService implements IChatContextService {
 
 ---
 
-## 五、Phase 3：意图识别系统
+## 浜斻€丳hase 3锛氭剰鍥捐瘑鍒郴缁?
 
-### 5.1 设计说明
+### 5.1 璁捐璇存槑
 
-采用 **两层分类器链**（规则 + LLM），适配后端服务场景（省去 WaLiCode 前端的"模型分类器"层，直接规则 + LLM 两层，降低延迟）。
+閲囩敤 **涓ゅ眰鍒嗙被鍣ㄩ摼**锛堣鍒?+ LLM锛夛紝閫傞厤鍚庣鏈嶅姟鍦烘櫙锛堢渷鍘?StackSSH 鍓嶇鐨?妯″瀷鍒嗙被鍣?灞傦紝鐩存帴瑙勫垯 + LLM 涓ゅ眰锛岄檷浣庡欢杩燂級銆?
 
-### 5.2 意图类型定义
+### 5.2 鎰忓浘绫诲瀷瀹氫箟
 
 ```java
 public enum IntentType {
-    DIAGNOSE("诊断问题"),
-    CONFIGURE("配置修改"),
-    DEPLOY("部署操作"),
-    MONITOR("监控查看"),
-    SECURITY("安全相关"),
-    BACKUP("备份恢复"),
-    EXECUTE("直接执行"),
-    EXPLAIN("解释说明"),
-    SEARCH("搜索查找"),
-    CHAT("闲聊"),
-    CONTINUE("继续"),
-    UNKNOWN("未知");
+    DIAGNOSE("璇婃柇闂"),
+    CONFIGURE("閰嶇疆淇敼"),
+    DEPLOY("閮ㄧ讲鎿嶄綔"),
+    MONITOR("鐩戞帶鏌ョ湅"),
+    SECURITY("瀹夊叏鐩稿叧"),
+    BACKUP("澶囦唤鎭㈠"),
+    EXECUTE("鐩存帴鎵ц"),
+    EXPLAIN("瑙ｉ噴璇存槑"),
+    SEARCH("鎼滅储鏌ユ壘"),
+    CHAT("闂茶亰"),
+    CONTINUE("缁х画"),
+    UNKNOWN("鏈煡");
 
     private final String label;
     IntentType(String label) { this.label = label; }
@@ -723,7 +723,7 @@ public enum IntentType {
 }
 ```
 
-### 5.3 IntentResult 值对象
+### 5.3 IntentResult 鍊煎璞?
 
 ```java
 @Data
@@ -736,12 +736,12 @@ public class IntentResult {
 }
 ```
 
-### 5.4 IIntentService 与 IntentService — 意图分类领域服务
+### 5.4 IIntentService 涓?IntentService 鈥?鎰忓浘鍒嗙被棰嗗煙鏈嶅姟
 
-提供统一的意图分类领域服务接口，隐藏内部的分类器编排：
+鎻愪緵缁熶竴鐨勬剰鍥惧垎绫婚鍩熸湇鍔℃帴鍙ｏ紝闅愯棌鍐呴儴鐨勫垎绫诲櫒缂栨帓锛?
 
 ```java
-package cn.bugstack.ai.domain.agent.service;
+package cn.stackssh.domain.agent.service;
 
 public interface IIntentService {
     IntentResult classify(String sessionId, String userId, String message);
@@ -749,9 +749,9 @@ public interface IIntentService {
 ```
 
 ```java
-package cn.bugstack.ai.domain.agent.service.intent;
+package cn.stackssh.domain.agent.service.intent;
 
-import cn.bugstack.ai.domain.agent.service.IIntentService;
+import cn.stackssh.domain.agent.service.IIntentService;
 
 @Service
 public class IntentService implements IIntentService {
@@ -772,14 +772,14 @@ public class IntentService implements IIntentService {
 
         ConversationContext context = contextTracker.getContext(sessionId);
 
-        // 第1层：规则分类（< 1ms）
+        // 绗?灞傦細瑙勫垯鍒嗙被锛? 1ms锛?
         IntentResult ruleResult = ruleClassifier.classify(message, context);
         if (ruleResult.getConfidence() >= 0.8) {
             recordAndCache(sessionId, cacheKey, ruleResult);
             return ruleResult;
         }
 
-        // 第2层：LLM 分类（100-500ms）
+        // 绗?灞傦細LLM 鍒嗙被锛?00-500ms锛?
         IntentResult llmResult = llmClassifier.classify(message, context);
         IntentResult finalResult = llmResult.getConfidence() >= 0.5 ? llmResult : ruleResult;
 
@@ -798,7 +798,7 @@ public class IntentService implements IIntentService {
 }
 ```
 
-### 5.5 RuleIntentClassifier — 规则分类器
+### 5.5 RuleIntentClassifier 鈥?瑙勫垯鍒嗙被鍣?
 
 ```java
 @Component
@@ -806,46 +806,46 @@ public class RuleIntentClassifier implements IntentClassifier {
 
     private static final List<IntentRule> RULES = List.of(
         rule(IntentType.DIAGNOSE,
-            List.of("挂了", "宕机", "down", "502", "503", "504", "OOM", "满", "过高", "异常",
-                    "报错", "告警", "超时", "timeout", "crash", "panic", "fatal"),
-            List.of("为什么.*(?:挂|报错|失败|不通)", "排查.*问题", "分析.*原因"),
-            Map.of(List.of("修复", "fix", "解决"), 0.1)),
+            List.of("鎸備簡", "瀹曟満", "down", "502", "503", "504", "OOM", "婊?, "杩囬珮", "寮傚父",
+                    "鎶ラ敊", "鍛婅", "瓒呮椂", "timeout", "crash", "panic", "fatal"),
+            List.of("涓轰粈涔?*(?:鎸倈鎶ラ敊|澶辫触|涓嶉€?", "鎺掓煡.*闂", "鍒嗘瀽.*鍘熷洜"),
+            Map.of(List.of("淇", "fix", "瑙ｅ喅"), 0.1)),
 
         rule(IntentType.CONFIGURE,
-            List.of("配置", "config", "修改配置", "参数", "调整", "设置", "调优"),
-            List.of("修改.*(?:conf|cfg|yml|properties|xml|json)", "设置.*参数"),
+            List.of("閰嶇疆", "config", "淇敼閰嶇疆", "鍙傛暟", "璋冩暣", "璁剧疆", "璋冧紭"),
+            List.of("淇敼.*(?:conf|cfg|yml|properties|xml|json)", "璁剧疆.*鍙傛暟"),
             Map.of()),
 
         rule(IntentType.DEPLOY,
-            List.of("部署", "deploy", "发布", "回滚", "rollback", "上线", "更新版本", "重启服务"),
-            List.of("(?:发布|部署).*版本", "回滚.*版本"),
+            List.of("閮ㄧ讲", "deploy", "鍙戝竷", "鍥炴粴", "rollback", "涓婄嚎", "鏇存柊鐗堟湰", "閲嶅惎鏈嶅姟"),
+            List.of("(?:鍙戝竷|閮ㄧ讲).*鐗堟湰", "鍥炴粴.*鐗堟湰"),
             Map.of()),
 
         rule(IntentType.MONITOR,
-            List.of("查看", "监控", "日志", "log", "cpu", "内存", "磁盘", "网络", "流量",
-                    "负载", "load", "进程", "端口", "连接数"),
-            List.of("(?:看|查|check).*(?:状态|情况|使用率)", "tail.*log"),
+            List.of("鏌ョ湅", "鐩戞帶", "鏃ュ織", "log", "cpu", "鍐呭瓨", "纾佺洏", "缃戠粶", "娴侀噺",
+                    "璐熻浇", "load", "杩涚▼", "绔彛", "杩炴帴鏁?),
+            List.of("(?:鐪媩鏌check).*(?:鐘舵€亅鎯呭喌|浣跨敤鐜?", "tail.*log"),
             Map.of()),
 
         rule(IntentType.SECURITY,
-            List.of("防火墙", "firewall", "iptables", "权限", "permission", "ssh", "密钥",
-                    "证书", "ssl", "tls", "安全", "漏洞", "CVE"),
-            List.of("(?:开放|关闭).*端口", "配置.*(?:ssl|证书|密钥)"),
+            List.of("闃茬伀澧?, "firewall", "iptables", "鏉冮檺", "permission", "ssh", "瀵嗛挜",
+                    "璇佷功", "ssl", "tls", "瀹夊叏", "婕忔礊", "CVE"),
+            List.of("(?:寮€鏀緗鍏抽棴).*绔彛", "閰嶇疆.*(?:ssl|璇佷功|瀵嗛挜)"),
             Map.of()),
 
         rule(IntentType.BACKUP,
-            List.of("备份", "backup", "恢复", "restore", "导出", "import", "迁移"),
-            List.of("备份.*(?:数据库|文件|配置)", "恢复.*数据"),
+            List.of("澶囦唤", "backup", "鎭㈠", "restore", "瀵煎嚭", "import", "杩佺Щ"),
+            List.of("澶囦唤.*(?:鏁版嵁搴搢鏂囦欢|閰嶇疆)", "鎭㈠.*鏁版嵁"),
             Map.of()),
 
         rule(IntentType.EXPLAIN,
-            List.of("什么意思", "怎么理解", "解释", "说明", "explain", "what is", "how to"),
-            List.of("这个命令.*(?:意思|作用|用途)"),
+            List.of("浠€涔堟剰鎬?, "鎬庝箞鐞嗚В", "瑙ｉ噴", "璇存槑", "explain", "what is", "how to"),
+            List.of("杩欎釜鍛戒护.*(?:鎰忔€潀浣滅敤|鐢ㄩ€?"),
             Map.of()),
 
         rule(IntentType.SEARCH,
-            List.of("找", "搜索", "grep", "find", "locate", "查找", "哪个进程", "哪个文件"),
-            List.of("(?:找|搜索).*(?:文件|进程|端口)"),
+            List.of("鎵?, "鎼滅储", "grep", "find", "locate", "鏌ユ壘", "鍝釜杩涚▼", "鍝釜鏂囦欢"),
+            List.of("(?:鎵緗鎼滅储).*(?:鏂囦欢|杩涚▼|绔彛)"),
             Map.of())
     );
 
@@ -858,17 +858,17 @@ public class RuleIntentClassifier implements IntentClassifier {
         for (IntentRule rule : RULES) {
             double score = 0.0;
 
-            // 关键词匹配（最高 0.6）
+            // 鍏抽敭璇嶅尮閰嶏紙鏈€楂?0.6锛?
             long hits = rule.getKeywords().stream()
                 .filter(lowerMsg::contains).count();
             score += Math.min(0.6, hits * 0.2);
 
-            // 正则匹配（额外 +0.2）
+            // 姝ｅ垯鍖归厤锛堥澶?+0.2锛?
             boolean patternHit = rule.getPatterns().stream()
                 .anyMatch(p -> Pattern.matches(".*" + p + ".*", message));
             if (patternHit) score += 0.2;
 
-            // 上下文加权：最近意图一致则 +0.1
+            // 涓婁笅鏂囧姞鏉冿細鏈€杩戞剰鍥句竴鑷村垯 +0.1
             if (context.getRecentIntents().stream()
                 .anyMatch(h -> h.getIntent() == rule.getIntent())) {
                 score += 0.1;
@@ -889,7 +889,7 @@ public class RuleIntentClassifier implements IntentClassifier {
 
     private Map<String, String> extractEntities(String message, IntentType intent) {
         Map<String, String> entities = new HashMap<>();
-        // 提取服务名
+        // 鎻愬彇鏈嶅姟鍚?
         List<String> services = List.of("nginx", "redis", "mysql", "postgres", "docker",
             "kafka", "rabbitmq", "elasticsearch", "tomcat", "spring");
         services.stream().filter(message.toLowerCase()::contains)
@@ -909,7 +909,7 @@ public class RuleIntentClassifier implements IntentClassifier {
 }
 ```
 
-### 5.6 LLMIntentClassifier — LLM 分类器
+### 5.6 LLMIntentClassifier 鈥?LLM 鍒嗙被鍣?
 
 ```java
 @Component
@@ -918,44 +918,44 @@ public class LLMIntentClassifier implements IntentClassifier {
     private ChatModel chatModel;
 
     private static final String CLASSIFY_PROMPT_TEMPLATE = """
-        你是一个 SSH 运维场景的意图识别系统。分析用户输入，返回 JSON 格式的意图分类结果。
+        浣犳槸涓€涓?SSH 杩愮淮鍦烘櫙鐨勬剰鍥捐瘑鍒郴缁熴€傚垎鏋愮敤鎴疯緭鍏ワ紝杩斿洖 JSON 鏍煎紡鐨勬剰鍥惧垎绫荤粨鏋溿€?
         
-        ## 意图类型
-        - DIAGNOSE: 诊断问题（服务挂了、报错、异常排查）
-        - CONFIGURE: 配置修改（改配置文件、调参数）
-        - DEPLOY: 部署操作（部署、发布、回滚）
-        - MONITOR: 监控查看（看日志、查状态、看资源使用）
-        - SECURITY: 安全相关（防火墙、权限、证书）
-        - BACKUP: 备份恢复（备份数据、恢复数据）
-        - EXECUTE: 直接执行（帮我跑某命令）
-        - EXPLAIN: 解释说明（这个命令什么意思）
-        - SEARCH: 搜索查找（找文件、查进程）
-        - CHAT: 闲聊
-        - CONTINUE: 继续上一个任务
-        - UNKNOWN: 无法判断
+        ## 鎰忓浘绫诲瀷
+        - DIAGNOSE: 璇婃柇闂锛堟湇鍔℃寕浜嗐€佹姤閿欍€佸紓甯告帓鏌ワ級
+        - CONFIGURE: 閰嶇疆淇敼锛堟敼閰嶇疆鏂囦欢銆佽皟鍙傛暟锛?
+        - DEPLOY: 閮ㄧ讲鎿嶄綔锛堥儴缃层€佸彂甯冦€佸洖婊氾級
+        - MONITOR: 鐩戞帶鏌ョ湅锛堢湅鏃ュ織銆佹煡鐘舵€併€佺湅璧勬簮浣跨敤锛?
+        - SECURITY: 瀹夊叏鐩稿叧锛堥槻鐏銆佹潈闄愩€佽瘉涔︼級
+        - BACKUP: 澶囦唤鎭㈠锛堝浠芥暟鎹€佹仮澶嶆暟鎹級
+        - EXECUTE: 鐩存帴鎵ц锛堝府鎴戣窇鏌愬懡浠わ級
+        - EXPLAIN: 瑙ｉ噴璇存槑锛堣繖涓懡浠や粈涔堟剰鎬濓級
+        - SEARCH: 鎼滅储鏌ユ壘锛堟壘鏂囦欢銆佹煡杩涚▼锛?
+        - CHAT: 闂茶亰
+        - CONTINUE: 缁х画涓婁竴涓换鍔?
+        - UNKNOWN: 鏃犳硶鍒ゆ柇
         
-        ## 输出格式（仅返回 JSON，无其他内容）
-        {"intent":"类型","confidence":0.0-1.0,"entities":{"key":"value"}}
+        ## 杈撳嚭鏍煎紡锛堜粎杩斿洖 JSON锛屾棤鍏朵粬鍐呭锛?
+        {"intent":"绫诲瀷","confidence":0.0-1.0,"entities":{"key":"value"}}
         
-        ## 示例
-        输入: "nginx 502了，帮我看看"
-        输出: {"intent":"DIAGNOSE","confidence":0.95,"entities":{"service":"nginx","error":"502"}}
+        ## 绀轰緥
+        杈撳叆: "nginx 502浜嗭紝甯垜鐪嬬湅"
+        杈撳嚭: {"intent":"DIAGNOSE","confidence":0.95,"entities":{"service":"nginx","error":"502"}}
         
-        输入: "帮我改下 redis 的 maxmemory 配置"
-        输出: {"intent":"CONFIGURE","confidence":0.9,"entities":{"service":"redis","config":"maxmemory"}}
+        杈撳叆: "甯垜鏀逛笅 redis 鐨?maxmemory 閰嶇疆"
+        杈撳嚭: {"intent":"CONFIGURE","confidence":0.9,"entities":{"service":"redis","config":"maxmemory"}}
         
-        输入: "看下服务器磁盘使用情况"
-        输出: {"intent":"MONITOR","confidence":0.9,"entities":{"resource":"disk"}}
+        杈撳叆: "鐪嬩笅鏈嶅姟鍣ㄧ鐩樹娇鐢ㄦ儏鍐?
+        杈撳嚭: {"intent":"MONITOR","confidence":0.9,"entities":{"resource":"disk"}}
         
-        输入: "这个命令 awk '{print $1}' access.log 是什么意思"
-        输出: {"intent":"EXPLAIN","confidence":0.95,"entities":{"command":"awk"}}
+        杈撳叆: "杩欎釜鍛戒护 awk '{print $1}' access.log 鏄粈涔堟剰鎬?
+        杈撳嚭: {"intent":"EXPLAIN","confidence":0.95,"entities":{"command":"awk"}}
         
-        ## 对话上下文
-        最近意图: %s
+        ## 瀵硅瘽涓婁笅鏂?
+        鏈€杩戞剰鍥? %s
         
-        ## 分析以下输入
-        输入: "%s"
-        输出:
+        ## 鍒嗘瀽浠ヤ笅杈撳叆
+        杈撳叆: "%s"
+        杈撳嚭:
         """;
 
     @Override
@@ -965,7 +965,7 @@ public class LLMIntentClassifier implements IntentClassifier {
             .collect(Collectors.joining(", "));
 
         String prompt = String.format(CLASSIFY_PROMPT_TEMPLATE,
-            recentIntents.isEmpty() ? "无" : recentIntents, message);
+            recentIntents.isEmpty() ? "鏃? : recentIntents, message);
 
         try {
             String response = chatModel.call(prompt).getResult().getOutput().getContent();
@@ -978,7 +978,7 @@ public class LLMIntentClassifier implements IntentClassifier {
 
     private IntentResult parseResponse(String response) {
         try {
-            // 提取 JSON 部分
+            // 鎻愬彇 JSON 閮ㄥ垎
             String json = response.replaceAll("(?s).*?(\\{.*}).*", "$1");
             Map<String, Object> parsed = new ObjectMapper().readValue(json, Map.class);
 
@@ -1001,7 +1001,7 @@ public class LLMIntentClassifier implements IntentClassifier {
 }
 ```
 
-### 5.7 ContextTracker — 对话上下文追踪器
+### 5.7 ContextTracker 鈥?瀵硅瘽涓婁笅鏂囪拷韪櫒
 
 ```java
 @Component
@@ -1039,15 +1039,15 @@ public class ContextTracker {
 
 ---
 
-## 六、Phase 4：意图增强 — 信号提取与上下文注入
+## 鍏€丳hase 4锛氭剰鍥惧寮?鈥?淇″彿鎻愬彇涓庝笂涓嬫枃娉ㄥ叆
 
-### 6.1 设计说明
+### 6.1 璁捐璇存槑
 
-从用户输入中提取结构化信号（服务名、文件路径、错误码等），到目标服务器上搜索相关上下文（服务状态、配置文件、日志），注入到 Prompt 中辅助 LLM 决策。
+浠庣敤鎴疯緭鍏ヤ腑鎻愬彇缁撴瀯鍖栦俊鍙凤紙鏈嶅姟鍚嶃€佹枃浠惰矾寰勩€侀敊璇爜绛夛級锛屽埌鐩爣鏈嶅姟鍣ㄤ笂鎼滅储鐩稿叧涓婁笅鏂囷紙鏈嶅姟鐘舵€併€侀厤缃枃浠躲€佹棩蹇楋級锛屾敞鍏ュ埌 Prompt 涓緟鍔?LLM 鍐崇瓥銆?
 
-核心思想：**关键词只做信息提取，不做决策** — SignalExtractor 负责提取信号，ContextSearch 负责查找上下文，LLM 统一做理解决策。
+鏍稿績鎬濇兂锛?*鍏抽敭璇嶅彧鍋氫俊鎭彁鍙栵紝涓嶅仛鍐崇瓥** 鈥?SignalExtractor 璐熻矗鎻愬彇淇″彿锛孋ontextSearch 璐熻矗鏌ユ壘涓婁笅鏂囷紝LLM 缁熶竴鍋氱悊瑙ｅ喅绛栥€?
 
-### 6.2 ExtractedSignals 值对象
+### 6.2 ExtractedSignals 鍊煎璞?
 
 ```java
 @Data
@@ -1062,7 +1062,7 @@ public class ExtractedSignals {
 }
 ```
 
-### 6.3 SignalExtractor — 信号提取器
+### 6.3 SignalExtractor 鈥?淇″彿鎻愬彇鍣?
 
 ```java
 @Component
@@ -1141,7 +1141,7 @@ public class SignalExtractor {
 }
 ```
 
-### 6.4 ContextSearch — 服务器上下文搜索
+### 6.4 ContextSearch 鈥?鏈嶅姟鍣ㄤ笂涓嬫枃鎼滅储
 
 ```java
 @Component
@@ -1156,7 +1156,7 @@ public class ContextSearch {
 
         SearchContext.SearchContextBuilder builder = SearchContext.builder();
 
-        // 1. 查询服务状态
+        // 1. 鏌ヨ鏈嶅姟鐘舵€?
         if (!signals.getServiceNames().isEmpty()) {
             Map<String, String> statusMap = new LinkedHashMap<>();
             for (String svc : signals.getServiceNames()) {
@@ -1168,7 +1168,7 @@ public class ContextSearch {
             builder.serviceStatus(statusMap);
         }
 
-        // 2. 读取相关配置文件（取前 50 行）
+        // 2. 璇诲彇鐩稿叧閰嶇疆鏂囦欢锛堝彇鍓?50 琛岋級
         if (!signals.getFilePaths().isEmpty()) {
             Map<String, String> contentMap = new LinkedHashMap<>();
             for (String path : signals.getFilePaths()) {
@@ -1181,7 +1181,7 @@ public class ContextSearch {
             builder.fileContents(contentMap);
         }
 
-        // 3. 搜索最近日志
+        // 3. 鎼滅储鏈€杩戞棩蹇?
         if (!signals.getErrorPatterns().isEmpty() || !signals.getLogKeywords().isEmpty()) {
             Map<String, String> logMap = new LinkedHashMap<>();
             for (String svc : signals.getServiceNames()) {
@@ -1191,7 +1191,7 @@ public class ContextSearch {
                     "tail -30 /var/log/" + svc + ".log 2>/dev/null");
                 if (!logs.isEmpty()) logMap.put(svc, logs);
             }
-            // 如果没有指定服务但有错误模式，搜索系统日志
+            // 濡傛灉娌℃湁鎸囧畾鏈嶅姟浣嗘湁閿欒妯″紡锛屾悳绱㈢郴缁熸棩蹇?
             if (logMap.isEmpty() && !signals.getErrorPatterns().isEmpty()) {
                 String sysLogs = safeExec(terminalSessionId,
                     "dmesg --time-format iso -T 2>/dev/null | tail -30 || dmesg | tail -30");
@@ -1214,12 +1214,12 @@ public class ContextSearch {
 }
 ```
 
-### 6.5 IIntentEnhancerService 与 IntentEnhancerService — 意图增强领域服务
+### 6.5 IIntentEnhancerService 涓?IntentEnhancerService 鈥?鎰忓浘澧炲己棰嗗煙鏈嶅姟
 
-通过暴露接口供 Case 层调用：
+閫氳繃鏆撮湶鎺ュ彛渚?Case 灞傝皟鐢細
 
 ```java
-package cn.bugstack.ai.domain.agent.service;
+package cn.stackssh.domain.agent.service;
 
 public interface IIntentEnhancerService {
     SearchContext enhance(String terminalSessionId, String userMessage);
@@ -1227,9 +1227,9 @@ public interface IIntentEnhancerService {
 ```
 
 ```java
-package cn.bugstack.ai.domain.agent.service.enhance;
+package cn.stackssh.domain.agent.service.enhance;
 
-import cn.bugstack.ai.domain.agent.service.IIntentEnhancerService;
+import cn.stackssh.domain.agent.service.IIntentEnhancerService;
 
 @Service
 public class IntentEnhancerService implements IIntentEnhancerService {
@@ -1238,7 +1238,7 @@ public class IntentEnhancerService implements IIntentEnhancerService {
 
     @Override
     public SearchContext enhance(String terminalSessionId, String userMessage) {
-        // Step 1: 信号提取
+        // Step 1: 淇″彿鎻愬彇
         ExtractedSignals signals = signalExtractor.extract(userMessage);
 
         boolean hasSignals = !signals.getServiceNames().isEmpty()
@@ -1250,13 +1250,13 @@ public class IntentEnhancerService implements IIntentEnhancerService {
             return SearchContext.builder().build();
         }
 
-        // Step 2: 根据信号查找服务器上下文
+        // Step 2: 鏍规嵁淇″彿鏌ユ壘鏈嶅姟鍣ㄤ笂涓嬫枃
         return contextSearch.searchBySignals(terminalSessionId, signals);
     }
 }
 ```
 
-### 6.6 SearchContext 值对象
+### 6.6 SearchContext 鍊煎璞?
 
 ```java
 @Data
@@ -1273,52 +1273,52 @@ public class SearchContext {
 
 ---
 
-## 七、Phase 5：会话持久化
+## 涓冦€丳hase 5锛氫細璇濇寔涔呭寲
 
-### 7.1 数据库表设计
+### 7.1 鏁版嵁搴撹〃璁捐
 
 ```sql
--- 会话元数据
+-- 浼氳瘽鍏冩暟鎹?
 CREATE TABLE `chat_session` (
-    `id`            VARCHAR(64)     NOT NULL COMMENT '会话ID',
-    `agent_id`      VARCHAR(64)     NOT NULL COMMENT '智能体ID',
-    `user_id`       VARCHAR(64)     NOT NULL COMMENT '用户ID',
-    `title`         VARCHAR(200)    DEFAULT NULL COMMENT '会话标题',
+    `id`            VARCHAR(64)     NOT NULL COMMENT '浼氳瘽ID',
+    `agent_id`      VARCHAR(64)     NOT NULL COMMENT '鏅鸿兘浣揑D',
+    `user_id`       VARCHAR(64)     NOT NULL COMMENT '鐢ㄦ埛ID',
+    `title`         VARCHAR(200)    DEFAULT NULL COMMENT '浼氳瘽鏍囬',
     `created_at`    TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     `updated_at`    TIMESTAMP       DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    `message_count` INT             DEFAULT 0 COMMENT '消息数量',
+    `message_count` INT             DEFAULT 0 COMMENT '娑堟伅鏁伴噺',
     PRIMARY KEY (`id`),
     INDEX `idx_user_agent` (`user_id`, `agent_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='对话会话';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='瀵硅瘽浼氳瘽';
 
--- 对话消息
+-- 瀵硅瘽娑堟伅
 CREATE TABLE `chat_message` (
     `id`            BIGINT          NOT NULL AUTO_INCREMENT,
-    `session_id`    VARCHAR(64)     NOT NULL COMMENT '会话ID',
-    `role`          VARCHAR(20)     NOT NULL COMMENT '角色: user/assistant/tool/system',
-    `content`       TEXT            COMMENT '消息内容',
-    `tool_name`     VARCHAR(100)    DEFAULT NULL COMMENT '工具名称',
-    `tool_call_id`  VARCHAR(100)    DEFAULT NULL COMMENT '工具调用ID',
-    `priority`      VARCHAR(20)     DEFAULT 'MEDIUM' COMMENT '优先级: CRITICAL/HIGH/MEDIUM/LOW',
-    `token_count`   INT             DEFAULT 0 COMMENT '预估 token 数',
+    `session_id`    VARCHAR(64)     NOT NULL COMMENT '浼氳瘽ID',
+    `role`          VARCHAR(20)     NOT NULL COMMENT '瑙掕壊: user/assistant/tool/system',
+    `content`       TEXT            COMMENT '娑堟伅鍐呭',
+    `tool_name`     VARCHAR(100)    DEFAULT NULL COMMENT '宸ュ叿鍚嶇О',
+    `tool_call_id`  VARCHAR(100)    DEFAULT NULL COMMENT '宸ュ叿璋冪敤ID',
+    `priority`      VARCHAR(20)     DEFAULT 'MEDIUM' COMMENT '浼樺厛绾? CRITICAL/HIGH/MEDIUM/LOW',
+    `token_count`   INT             DEFAULT 0 COMMENT '棰勪及 token 鏁?,
     `created_at`    TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     INDEX `idx_session_time` (`session_id`, `created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='对话消息';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='瀵硅瘽娑堟伅';
 
--- 里程碑事件
+-- 閲岀▼纰戜簨浠?
 CREATE TABLE `chat_milestone` (
     `id`            BIGINT          NOT NULL AUTO_INCREMENT,
-    `session_id`    VARCHAR(64)     NOT NULL COMMENT '会话ID',
-    `type`          VARCHAR(30)     NOT NULL COMMENT '类型: TASK_CHANGE/ERROR/DECISION/...',
-    `content`       TEXT            COMMENT '内容摘要',
+    `session_id`    VARCHAR(64)     NOT NULL COMMENT '浼氳瘽ID',
+    `type`          VARCHAR(30)     NOT NULL COMMENT '绫诲瀷: TASK_CHANGE/ERROR/DECISION/...',
+    `content`       TEXT            COMMENT '鍐呭鎽樿',
     `created_at`    TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     INDEX `idx_session_time` (`session_id`, `created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='对话里程碑';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='瀵硅瘽閲岀▼纰?;
 ```
 
-### 7.2 网关接口
+### 7.2 缃戝叧鎺ュ彛
 
 ```java
 public interface IChatHistoryGateway {
@@ -1332,67 +1332,68 @@ public interface IChatHistoryGateway {
 
 ---
 
-## 八、实施计划
+## 鍏€佸疄鏂借鍒?
 
-### 8.1 分阶段优先级
+### 8.1 鍒嗛樁娈典紭鍏堢骇
 
-| 阶段 | 内容 | 依赖 | 预估工作量 |
+| 闃舵 | 鍐呭 | 渚濊禆 | 棰勪及宸ヤ綔閲?|
 |------|------|------|-----------|
-| **Phase 1** | 动态 Prompt 构建 | 无 | 2 天 |
-| **Phase 2** | 上下文记忆管理 | Phase 1 | 4 天 |
-| **Phase 5** | 会话持久化 | Phase 2 | 3 天 |
-| **Phase 3** | 意图识别系统 | Phase 1 | 3 天 |
-| **Phase 4** | 意图增强 | Phase 3 | 3 天 |
+| **Phase 1** | 鍔ㄦ€?Prompt 鏋勫缓 | 鏃?| 2 澶?|
+| **Phase 2** | 涓婁笅鏂囪蹇嗙鐞?| Phase 1 | 4 澶?|
+| **Phase 5** | 浼氳瘽鎸佷箙鍖?| Phase 2 | 3 澶?|
+| **Phase 3** | 鎰忓浘璇嗗埆绯荤粺 | Phase 1 | 3 澶?|
+| **Phase 4** | 鎰忓浘澧炲己 | Phase 3 | 3 澶?|
 
-### 8.2 建议落地顺序
+### 8.2 寤鸿钀藉湴椤哄簭
 
 ```
-Phase 1（动态 Prompt）
-    ↓
-Phase 2（上下文记忆）
-    ↓
-Phase 5（会话持久化）
-    ↓
-Phase 3（意图识别）
-    ↓
-Phase 4（意图增强）
+Phase 1锛堝姩鎬?Prompt锛?
+    鈫?
+Phase 2锛堜笂涓嬫枃璁板繂锛?
+    鈫?
+Phase 5锛堜細璇濇寔涔呭寲锛?
+    鈫?
+Phase 3锛堟剰鍥捐瘑鍒級
+    鈫?
+Phase 4锛堟剰鍥惧寮猴級
 ```
 
-理由：
-1. Phase 1 改动最小、收益最直接，是后续所有功能的基础
-2. Phase 2 解决核心痛点（context 超限），Phase 5 是其必要补充
-3. Phase 3 + 4 是体验增强层，在基础稳定后叠加
+鐞嗙敱锛?
+1. Phase 1 鏀瑰姩鏈€灏忋€佹敹鐩婃渶鐩存帴锛屾槸鍚庣画鎵€鏈夊姛鑳界殑鍩虹
+2. Phase 2 瑙ｅ喅鏍稿績鐥涚偣锛坈ontext 瓒呴檺锛夛紝Phase 5 鏄叾蹇呰琛ュ厖
+3. Phase 3 + 4 鏄綋楠屽寮哄眰锛屽湪鍩虹绋冲畾鍚庡彔鍔?
 
-### 8.3 关键改造文件清单
+### 8.3 鍏抽敭鏀归€犳枃浠舵竻鍗?
 
-| 文件 | 改造内容 |
+| 鏂囦欢 | 鏀归€犲唴瀹?|
 |------|---------|
-| `IPromptService.java` / `PromptService.java` | **【Phase 1】** 提示词与上下文构建的统一领域服务 |
-| `DynamicPromptBuilder.java` | 动态组装提示词的底层组件 |
-| `MilestoneTracker.java` | 里程碑关键事件的检测与存储 |
-| `IChatContextService.java` / `ChatContextService.java` | **【Phase 2】** 上下文管理领域服务，封装 Provider 和 Reducer 逻辑 |
-| `IIntentService.java` / `IntentService.java` | **【Phase 3】** 意图分类领域服务，封装两层分类器逻辑 |
-| `IIntentEnhancerService.java` / `IntentEnhancerService.java` | **【Phase 4】** 意图增强领域服务，封装信号提取与搜索 |
-| `AiCallNode.java` | **【Phase 1】** 注入 `IPromptService`，实现环境信息和意图等上下文的动态注入 |
-| `AIAgentReActServiceCase.java` | 在 chatStream 入口处调用领域服务（如 `IIntentService`、`IIntentEnhancerService`）进行意图识别和增强 |
-| `DefaultReActFactory.java` | DynamicContext 新增意图结果和搜索上下文字段 |
-| `ChatService.java` | 集成会话持久化 |
-| `SshExecuteAdkTool.java` | 工具结果推送到 MilestoneTracker 和 ToolResultProvider |
-| `application-dev.yml` | 新增意图识别和上下文管理的配置开关 |
+| `IPromptService.java` / `PromptService.java` | **銆怭hase 1銆?* 鎻愮ず璇嶄笌涓婁笅鏂囨瀯寤虹殑缁熶竴棰嗗煙鏈嶅姟 |
+| `DynamicPromptBuilder.java` | 鍔ㄦ€佺粍瑁呮彁绀鸿瘝鐨勫簳灞傜粍浠?|
+| `MilestoneTracker.java` | 閲岀▼纰戝叧閿簨浠剁殑妫€娴嬩笌瀛樺偍 |
+| `IChatContextService.java` / `ChatContextService.java` | **銆怭hase 2銆?* 涓婁笅鏂囩鐞嗛鍩熸湇鍔★紝灏佽 Provider 鍜?Reducer 閫昏緫 |
+| `IIntentService.java` / `IntentService.java` | **銆怭hase 3銆?* 鎰忓浘鍒嗙被棰嗗煙鏈嶅姟锛屽皝瑁呬袱灞傚垎绫诲櫒閫昏緫 |
+| `IIntentEnhancerService.java` / `IntentEnhancerService.java` | **銆怭hase 4銆?* 鎰忓浘澧炲己棰嗗煙鏈嶅姟锛屽皝瑁呬俊鍙锋彁鍙栦笌鎼滅储 |
+| `AiCallNode.java` | **銆怭hase 1銆?* 娉ㄥ叆 `IPromptService`锛屽疄鐜扮幆澧冧俊鎭拰鎰忓浘绛変笂涓嬫枃鐨勫姩鎬佹敞鍏?|
+| `AIAgentReActServiceCase.java` | 鍦?chatStream 鍏ュ彛澶勮皟鐢ㄩ鍩熸湇鍔★紙濡?`IIntentService`銆乣IIntentEnhancerService`锛夎繘琛屾剰鍥捐瘑鍒拰澧炲己 |
+| `DefaultReActFactory.java` | DynamicContext 鏂板鎰忓浘缁撴灉鍜屾悳绱笂涓嬫枃瀛楁 |
+| `ChatService.java` | 闆嗘垚浼氳瘽鎸佷箙鍖?|
+| `SshExecuteAdkTool.java` | 宸ュ叿缁撴灉鎺ㄩ€佸埌 MilestoneTracker 鍜?ToolResultProvider |
+| `application-dev.yml` | 鏂板鎰忓浘璇嗗埆鍜屼笂涓嬫枃绠＄悊鐨勯厤缃紑鍏?|
 
 ---
 
-## 九、与 WaLiCode 设计的关键适配差异
+## 涔濄€佷笌 StackSSH 璁捐鐨勫叧閿€傞厤宸紓
 
-| 维度 | WaLiCode | WaLiSSH 适配 |
+| 缁村害 | StackSSH | StackSSH 閫傞厤 |
 |------|----------|-------------|
-| 运行环境 | Tauri 前端进程 | Spring Boot 后端，多用户并发 |
-| LLM 调用 | 直接 HTTP API | Spring AI → ADK 桥接 |
-| 上下文来源 | 编辑器文件、光标、Tab | SSH 终端状态、命令历史、服务状态 |
-| 信号提取 | 代码文件路径、符号名 | 服务器地址、文件路径、服务名、错误码 |
-| 会话存储 | Tauri 文件系统（本地 JSON） | MySQL + Redis（服务端持久化） |
-| 并发模型 | 单用户单进程 | 多用户多线程（ConcurrentHashMap + Redis） |
-| 意图类型 | code_edit / debug / refactor | DIAGNOSE / CONFIGURE / DEPLOY / MONITOR |
-| Provider 适配 | FileProvider（编辑器文件） | TerminalStateProvider（终端状态、系统信息） |
-| 分类器层数 | 三层（规则→模型→LLM） | 两层（规则→LLM），后端省去中间层降低延迟 |
-| 缓存策略 | 内存 Map | Caffeine 本地缓存 + Redis 分布式缓存 |
+| 杩愯鐜 | Tauri 鍓嶇杩涚▼ | Spring Boot 鍚庣锛屽鐢ㄦ埛骞跺彂 |
+| LLM 璋冪敤 | 鐩存帴 HTTP API | Spring AI 鈫?ADK 妗ユ帴 |
+| 涓婁笅鏂囨潵婧?| 缂栬緫鍣ㄦ枃浠躲€佸厜鏍囥€乀ab | SSH 缁堢鐘舵€併€佸懡浠ゅ巻鍙层€佹湇鍔＄姸鎬?|
+| 淇″彿鎻愬彇 | 浠ｇ爜鏂囦欢璺緞銆佺鍙峰悕 | 鏈嶅姟鍣ㄥ湴鍧€銆佹枃浠惰矾寰勩€佹湇鍔″悕銆侀敊璇爜 |
+| 浼氳瘽瀛樺偍 | Tauri 鏂囦欢绯荤粺锛堟湰鍦?JSON锛?| MySQL + Redis锛堟湇鍔＄鎸佷箙鍖栵級 |
+| 骞跺彂妯″瀷 | 鍗曠敤鎴峰崟杩涚▼ | 澶氱敤鎴峰绾跨▼锛圕oncurrentHashMap + Redis锛?|
+| 鎰忓浘绫诲瀷 | code_edit / debug / refactor | DIAGNOSE / CONFIGURE / DEPLOY / MONITOR |
+| Provider 閫傞厤 | FileProvider锛堢紪杈戝櫒鏂囦欢锛?| TerminalStateProvider锛堢粓绔姸鎬併€佺郴缁熶俊鎭級 |
+| 鍒嗙被鍣ㄥ眰鏁?| 涓夊眰锛堣鍒欌啋妯″瀷鈫扡LM锛?| 涓ゅ眰锛堣鍒欌啋LLM锛夛紝鍚庣鐪佸幓涓棿灞傞檷浣庡欢杩?|
+| 缂撳瓨绛栫暐 | 鍐呭瓨 Map | Caffeine 鏈湴缂撳瓨 + Redis 鍒嗗竷寮忕紦瀛?|
+

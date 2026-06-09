@@ -1,8 +1,8 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="cn.bugstack.ai.infrastructure.dao.IChatMessageDao">
+<mapper namespace="cn.stackssh.infrastructure.dao.IChatMessageDao">
 
-    <resultMap id="chatMessageMap" type="cn.bugstack.ai.infrastructure.dao.po.ChatMessagePO">
+    <resultMap id="chatMessageMap" type="cn.stackssh.infrastructure.dao.po.ChatMessagePO">
         <id column="id" property="id"/>
         <result column="session_id" property="sessionId"/>
         <result column="role" property="role"/>
@@ -14,7 +14,7 @@
         <result column="created_at" property="createdAt"/>
     </resultMap>
 
-    <insert id="insert" parameterType="cn.bugstack.ai.infrastructure.dao.po.ChatMessagePO" useGeneratedKeys="true" keyProperty="id">
+    <insert id="insert" parameterType="cn.stackssh.infrastructure.dao.po.ChatMessagePO" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO chat_message (session_id, role, content, tool_name, tool_call_id, priority, token_count, created_at)
         VALUES (#{sessionId}, #{role}, #{content}, #{toolName}, #{toolCallId}, #{priority}, #{tokenCount}, now())
     </insert>

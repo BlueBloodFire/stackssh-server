@@ -1,8 +1,8 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="cn.bugstack.ai.infrastructure.dao.ISshConnectionConfigDAO">
+<mapper namespace="cn.stackssh.infrastructure.dao.ISshConnectionConfigDAO">
 
-    <resultMap id="SshConnectionConfigMap" type="cn.bugstack.ai.infrastructure.dao.po.SshConnectionConfigPO">
+    <resultMap id="SshConnectionConfigMap" type="cn.stackssh.infrastructure.dao.po.SshConnectionConfigPO">
         <id column="id" property="id"/>
         <result column="connection_id" property="connectionId"/>
         <result column="connect_timeout" property="connectTimeout"/>
@@ -14,7 +14,7 @@
         <result column="updated_at" property="updatedAt"/>
     </resultMap>
 
-    <insert id="insertOrUpdate" parameterType="cn.bugstack.ai.infrastructure.dao.po.SshConnectionConfigPO">
+    <insert id="insertOrUpdate" parameterType="cn.stackssh.infrastructure.dao.po.SshConnectionConfigPO">
         INSERT INTO ssh_connection_config (
             connection_id, connect_timeout, keepalive_interval, startup_command,
             compression, strict_host_key_check, known_hosts

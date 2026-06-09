@@ -2,7 +2,7 @@
 FROM registry.cn-hangzhou.aliyuncs.com/xfg-studio/openjdk:17-jdk-slim
 
 # 作者
-MAINTAINER xiaofuge
+MAINTAINER BlueBloodFire
 
 # 配置
 ENV PARAMS=""
