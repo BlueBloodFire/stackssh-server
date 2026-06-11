@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.stackssh.infrastructure.dao.IUserDao">
+
+    <resultMap id="UserMap" type="cn.stackssh.infrastructure.dao.po.UserPO">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="username" property="username"/>
+        <result column="password" property="password"/>
+        <result column="status" property="status"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="cn.stackssh.infrastructure.dao.po.UserPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user (user_id, username, password, status)
+        VALUES (#{userId}, #{username}, #{password}, #{status})
+    </insert>
+
+    <select id="selectByUsername" resultMap="UserMap">
+        SELECT id, user_id, username, password, status, created_at, updated_at
+        FROM user
+        WHERE username = #{username} AND status != 0
+        LIMIT 1
+    </select>
+
+    <select id="countByUsername" resultType="int">
+        SELECT COUNT(1) FROM user WHERE username = #{username}
+    </select>
+
+</mapper>

@@ -54,6 +54,10 @@ mybatis:
   mapper-locations: classpath:/mybatis/mapper/*.xml
   config-location: classpath:/mybatis/config/mybatis-config.xml
 
+# JWT 配置
+jwt:
+  secret: StackSSH2026JwtSecret!!PleaseChangeInProd
+
 # 终端安全配置
 terminal:
   safety:
@@ -73,6 +77,15 @@ terminal:
       - "reboot"
       - "init 0"
       - "init 6"
+
+# RAG 知识库配置
+knowledge:
+  vector-store:
+    persist-path: ./data/vector-store.json
+  embedding:
+    base-url: https://api.deepseek.com
+    api-key: sk-1e03bd81f3d241b4af9cd71e9a628ea8
+    model: text-embedding-3-small
 
 # 日志
 logging:
