@@ -43,3 +43,5 @@ build/
 /docs/dev-ops/log/log_error.log
 /docs/dev-ops/log/log_info.log
 .walicode/
+
+CLAUDE.md
