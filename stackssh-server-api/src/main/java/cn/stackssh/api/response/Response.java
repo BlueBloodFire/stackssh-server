@@ -1,4 +1,4 @@
-﻿package cn.stackssh.api.response;
+package cn.stackssh.api.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

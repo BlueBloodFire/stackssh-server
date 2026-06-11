@@ -1,4 +1,4 @@
-﻿package cn.stackssh.test.app;
+package cn.stackssh.test.app;
 
 import cn.stackssh.domain.agent.model.valobj.AiAgentRegisterVO;
 import com.alibaba.fastjson.JSON;

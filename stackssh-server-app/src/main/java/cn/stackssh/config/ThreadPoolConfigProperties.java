@@ -1,4 +1,4 @@
-﻿package cn.stackssh.config;
+package cn.stackssh.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;

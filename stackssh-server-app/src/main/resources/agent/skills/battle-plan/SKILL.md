@@ -1,4 +1,4 @@
-﻿---
+---
 name: battle-plan
 description: 电脑性能优化
 license: MIT

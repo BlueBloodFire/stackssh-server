@@ -1,4 +1,4 @@
-﻿package cn.stackssh.config;
+package cn.stackssh.config;
 
 import cn.stackssh.domain.agent.model.valobj.AiAgentConfigTableVO;
 import cn.stackssh.domain.agent.model.valobj.properties.AiAgentAutoConfigProperties;

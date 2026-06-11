@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.ssh.model.valobj;
+package cn.stackssh.domain.ssh.model.valobj;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

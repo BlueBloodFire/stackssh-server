@@ -1,4 +1,4 @@
-﻿package cn.stackssh.infrastructure.adapter.port;
+package cn.stackssh.infrastructure.adapter.port;
 
 import cn.stackssh.domain.ssh.adapter.port.ISshFilePort;
 import cn.stackssh.domain.ssh.model.entity.SshFileContentEntity;

@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.ssh.adapter.repository;
+package cn.stackssh.domain.ssh.adapter.repository;
 
 import cn.stackssh.domain.ssh.model.entity.SshConnectionEntity;
 import cn.stackssh.domain.ssh.model.entity.SshConnectionConfigEntity;

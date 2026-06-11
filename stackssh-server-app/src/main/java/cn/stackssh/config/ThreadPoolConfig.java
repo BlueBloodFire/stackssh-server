@@ -1,4 +1,4 @@
-﻿package cn.stackssh.config;
+package cn.stackssh.config;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;

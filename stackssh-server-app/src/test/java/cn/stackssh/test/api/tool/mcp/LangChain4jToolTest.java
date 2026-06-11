@@ -1,4 +1,4 @@
-﻿package cn.stackssh.test.api.tool.mcp;
+package cn.stackssh.test.api.tool.mcp;
 
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.openai.OpenAiChatModel;

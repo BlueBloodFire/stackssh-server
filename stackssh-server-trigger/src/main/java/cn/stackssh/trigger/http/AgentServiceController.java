@@ -1,4 +1,4 @@
-﻿package cn.stackssh.trigger.http;
+package cn.stackssh.trigger.http;
 
 import cn.stackssh.api.IAgentService;
 import cn.stackssh.api.dto.*;

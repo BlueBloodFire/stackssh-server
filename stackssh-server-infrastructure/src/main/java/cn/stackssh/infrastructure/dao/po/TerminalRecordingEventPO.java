@@ -1,4 +1,4 @@
-﻿package cn.stackssh.infrastructure.dao.po;
+package cn.stackssh.infrastructure.dao.po;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

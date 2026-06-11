@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.agent.service.armory.matter.skills;
+package cn.stackssh.domain.agent.service.armory.matter.skills;
 
 import cn.stackssh.domain.agent.model.valobj.AiAgentConfigTableVO;
 import org.springframework.ai.tool.ToolCallback;

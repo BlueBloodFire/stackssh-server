@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.agent.model.valobj.intent;
+package cn.stackssh.domain.agent.model.valobj.intent;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.ssh.adapter.port;
+package cn.stackssh.domain.ssh.adapter.port;
 
 import cn.stackssh.domain.ssh.model.entity.TerminalRecordingEntity;
 

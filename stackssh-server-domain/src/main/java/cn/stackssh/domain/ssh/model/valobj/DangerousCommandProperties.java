@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.ssh.model.valobj;
+package cn.stackssh.domain.ssh.model.valobj;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;

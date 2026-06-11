@@ -1,4 +1,4 @@
-﻿package cn.stackssh.infrastructure.dao;
+package cn.stackssh.infrastructure.dao;
 
 import cn.stackssh.infrastructure.dao.po.TerminalRecordingEventPO;
 import org.apache.ibatis.annotations.Mapper;

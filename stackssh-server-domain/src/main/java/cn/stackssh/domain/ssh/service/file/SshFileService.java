@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.ssh.service.file;
+package cn.stackssh.domain.ssh.service.file;
 
 import cn.stackssh.domain.ssh.adapter.port.ISshFilePort;
 import cn.stackssh.domain.ssh.adapter.port.ISshSessionPort;

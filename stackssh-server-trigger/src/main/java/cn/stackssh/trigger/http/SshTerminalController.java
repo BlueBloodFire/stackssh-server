@@ -1,4 +1,4 @@
-﻿package cn.stackssh.trigger.http;
+package cn.stackssh.trigger.http;
 
 import cn.stackssh.api.dto.*;
 import cn.stackssh.api.response.Response;

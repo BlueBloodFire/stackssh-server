@@ -1,4 +1,4 @@
-﻿package cn.stackssh.cases;
+package cn.stackssh.cases;
 
 import cn.stackssh.api.dto.ChatRequestDTO;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;

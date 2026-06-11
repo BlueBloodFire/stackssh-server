@@ -1,4 +1,4 @@
-﻿package cn.stackssh;
+package cn.stackssh;
 
 import cn.stackssh.domain.agent.service.armory.matter.mcp.server.MyTestMcpService;
 import cn.stackssh.domain.agent.service.armory.matter.mcp.server.SshExecuteMcpService;

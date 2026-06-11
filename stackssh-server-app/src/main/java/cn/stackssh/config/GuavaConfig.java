@@ -1,4 +1,4 @@
-﻿package cn.stackssh.config;
+package cn.stackssh.config;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;

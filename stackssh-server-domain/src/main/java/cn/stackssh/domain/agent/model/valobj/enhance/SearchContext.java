@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.agent.model.valobj.enhance;
+package cn.stackssh.domain.agent.model.valobj.enhance;
 
 import lombok.Builder;
 import lombok.Data;

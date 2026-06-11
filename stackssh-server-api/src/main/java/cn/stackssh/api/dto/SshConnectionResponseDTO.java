@@ -1,4 +1,4 @@
-﻿package cn.stackssh.api.dto;
+package cn.stackssh.api.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

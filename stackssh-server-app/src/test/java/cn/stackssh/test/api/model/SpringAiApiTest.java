@@ -1,4 +1,4 @@
-﻿package cn.stackssh.test.api.model;
+package cn.stackssh.test.api.model;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;

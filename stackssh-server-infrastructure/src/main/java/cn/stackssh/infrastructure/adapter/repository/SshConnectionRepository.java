@@ -1,4 +1,4 @@
-﻿package cn.stackssh.infrastructure.adapter.repository;
+package cn.stackssh.infrastructure.adapter.repository;
 
 import cn.stackssh.domain.ssh.adapter.repository.ISshConnectionRepository;
 import cn.stackssh.domain.ssh.model.entity.SshConnectionConfigEntity;
@@ -11,6 +11,7 @@ import cn.stackssh.infrastructure.dao.po.SshConnectionConfigPO;
 import cn.stackssh.infrastructure.dao.po.SshConnectionPO;
 import cn.stackssh.infrastructure.security.PasswordEncryptor;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -21,6 +22,7 @@ import java.util.stream.Collectors;
  *
  * @author waissh dev
  */
+@Slf4j
 @Repository
 public class SshConnectionRepository implements ISshConnectionRepository {
 
@@ -112,10 +114,20 @@ public class SshConnectionRepository implements ISshConnectionRepository {
 
         if (po.getEncrypted() != null && po.getEncrypted() == 1) {
             if (password != null && !password.isEmpty()) {
-                password = passwordEncryptor.decrypt(password);
+                try {
+                    password = passwordEncryptor.decrypt(password);
+                } catch (Exception e) {
+                    log.warn("连接 [{}] 密码解密失败，可能密钥已更换，需重新保存密码", po.getConnectionId());
+                    password = null;
+                }
             }
             if (privateKey != null && !privateKey.isEmpty()) {
-                privateKey = passwordEncryptor.decrypt(privateKey);
+                try {
+                    privateKey = passwordEncryptor.decrypt(privateKey);
+                } catch (Exception e) {
+                    log.warn("连接 [{}] 私钥解密失败，可能密钥已更换，需重新保存私钥", po.getConnectionId());
+                    privateKey = null;
+                }
             }
         }
 

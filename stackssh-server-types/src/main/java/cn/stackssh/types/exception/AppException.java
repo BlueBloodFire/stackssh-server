@@ -1,4 +1,4 @@
-﻿package cn.stackssh.types.exception;
+package cn.stackssh.types.exception;
 
 import lombok.Data;
 import lombok.EqualsAndHashCode;

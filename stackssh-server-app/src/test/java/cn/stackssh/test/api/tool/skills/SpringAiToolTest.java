@@ -1,4 +1,4 @@
-﻿package cn.stackssh.test.api.tool.skills;
+package cn.stackssh.test.api.tool.skills;
 
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;

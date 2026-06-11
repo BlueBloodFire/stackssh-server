@@ -1,4 +1,4 @@
-﻿package cn.stackssh.infrastructure.adapter.repository;
+package cn.stackssh.infrastructure.adapter.repository;
 
 import cn.stackssh.domain.agent.adapter.repository.IChatHistoryRepository;
 import cn.stackssh.domain.agent.model.entity.ChatMessageEntity;

@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.ssh.adapter.port;
+package cn.stackssh.domain.ssh.adapter.port;
 
 /**
  * 终端会话服务接口

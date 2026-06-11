@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.agent.model.entity;
+package cn.stackssh.domain.agent.model.entity;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

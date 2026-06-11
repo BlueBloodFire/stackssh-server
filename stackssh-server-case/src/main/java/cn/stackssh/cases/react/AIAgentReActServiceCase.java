@@ -1,4 +1,4 @@
-﻿package cn.stackssh.cases.react;
+package cn.stackssh.cases.react;
 
 import cn.stackssh.api.dto.ChatRequestDTO;
 import cn.stackssh.api.dto.ReActResultDTO;

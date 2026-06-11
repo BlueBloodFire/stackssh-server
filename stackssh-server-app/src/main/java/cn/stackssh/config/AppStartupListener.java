@@ -1,4 +1,4 @@
-﻿package cn.stackssh.config;
+package cn.stackssh.config;
 
 import cn.stackssh.infrastructure.dao.ISshConnectionDAO;
 import lombok.extern.slf4j.Slf4j;

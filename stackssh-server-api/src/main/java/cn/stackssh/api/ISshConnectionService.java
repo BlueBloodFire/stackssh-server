@@ -1,4 +1,4 @@
-﻿package cn.stackssh.api;
+package cn.stackssh.api;
 
 import cn.stackssh.api.dto.SshConnectionRequestDTO;
 import cn.stackssh.api.dto.SshConnectionResponseDTO;

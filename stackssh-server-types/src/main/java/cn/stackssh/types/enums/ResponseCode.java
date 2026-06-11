@@ -1,4 +1,4 @@
-﻿package cn.stackssh.types.enums;
+package cn.stackssh.types.enums;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

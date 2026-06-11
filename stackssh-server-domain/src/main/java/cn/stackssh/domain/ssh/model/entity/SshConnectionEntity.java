@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.ssh.model.entity;
+package cn.stackssh.domain.ssh.model.entity;
 
 import cn.stackssh.domain.ssh.model.valobj.AuthTypeEnum;
 import cn.stackssh.domain.ssh.model.valobj.ConnectionStatusEnum;

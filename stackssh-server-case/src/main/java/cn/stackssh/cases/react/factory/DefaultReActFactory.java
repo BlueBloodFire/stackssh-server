@@ -1,4 +1,4 @@
-﻿package cn.stackssh.cases.react.factory;
+package cn.stackssh.cases.react.factory;
 
 import cn.stackssh.api.dto.ReActEventDTO;
 import lombok.AllArgsConstructor;

@@ -1,4 +1,4 @@
-﻿package cn.stackssh.types.common;
+package cn.stackssh.types.common;
 
 public class Constants {
 

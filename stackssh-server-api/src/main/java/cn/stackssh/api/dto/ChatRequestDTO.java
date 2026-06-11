@@ -1,4 +1,4 @@
-﻿package cn.stackssh.api.dto;
+package cn.stackssh.api.dto;
 
 import lombok.Data;
 
@@ -15,5 +15,8 @@ public class ChatRequestDTO {
      * 如果未指定，系统将尝试从会话绑定中获取
      */
     private String terminalSessionId;
+
+    /** SSH 连接 ID，用于 RAG 知识库按连接过滤 */
+    private String connectionId;
 
 }

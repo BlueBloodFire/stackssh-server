@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.agent.model.valobj.enums;
+package cn.stackssh.domain.agent.model.valobj.enums;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

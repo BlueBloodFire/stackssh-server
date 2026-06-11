@@ -1,4 +1,4 @@
-﻿package cn.stackssh.infrastructure.adapter.port;
+package cn.stackssh.infrastructure.adapter.port;
 
 import cn.stackssh.domain.ssh.adapter.port.ISshSessionPort;
 import com.jcraft.jsch.*;

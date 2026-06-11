@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.agent.service.prompt.dynamic;
+package cn.stackssh.domain.agent.service.prompt.dynamic;
 
 import cn.stackssh.domain.agent.model.valobj.enhance.SearchContext;
 import cn.stackssh.domain.agent.model.valobj.prompt.MilestoneVO;

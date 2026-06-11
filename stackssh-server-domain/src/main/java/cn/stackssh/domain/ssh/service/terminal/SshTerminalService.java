@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.ssh.service.terminal;
+package cn.stackssh.domain.ssh.service.terminal;
 
 import cn.stackssh.domain.ssh.adapter.port.ISshSessionPort;
 import cn.stackssh.domain.ssh.adapter.port.ITerminalRecordingPort;

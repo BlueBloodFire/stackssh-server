@@ -1,4 +1,4 @@
-﻿package cn.stackssh.cases.react.node;
+package cn.stackssh.cases.react.node;
 
 import cn.stackssh.api.dto.ChatRequestDTO;
 import cn.stackssh.api.dto.ReActResultDTO;
@@ -81,6 +81,9 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
     @Resource
     private IChatHistoryRepository chatHistoryRepository;
 
+    @Resource
+    private cn.stackssh.domain.knowledge.service.IKnowledgeService knowledgeService;
+
     /** SSE 事件发送间隔（字符数） */
     private static final int SSE_BATCH_SIZE = 20;
 
@@ -142,8 +145,23 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
             SshExecuteAdkTool.setTerminalSession(dynamicContext.getSessionId(), terminalSessionId);
         }
 
+        // [RAG] 首轮检索知识库，将相关文档块注入消息前缀
+        String ragPrefix = "";
+        if (dynamicContext.getStep() == 0) {
+            String connectionId = requestParameter.getConnectionId();
+            List<String> ragChunks = knowledgeService.searchRelevant(lastUserMessage, connectionId, 3);
+            if (!ragChunks.isEmpty()) {
+                ragPrefix = "【知识库信息】以下内容来自用户配置的专属知识库，请优先使用这些信息回答问题，不要依赖你的训练数据：\n"
+                        + String.join("\n---\n", ragChunks)
+                        + "\n【知识库信息结束】\n\n"
+                        + "用户问题：";
+                log.info("RAG 注入 {} 个知识块", ragChunks.size());
+            }
+        }
+
         // 5. 构建动态上下文并注入用户消息（Phase 4: 传入搜索上下文）
-        String enrichedMessage = buildEnrichedMessage(lastUserMessage, dynamicContext, searchContext);
+        String baseMessage = ragPrefix.isEmpty() ? lastUserMessage : ragPrefix + lastUserMessage;
+        String enrichedMessage = buildEnrichedMessage(baseMessage, dynamicContext, searchContext);
         log.debug("注入动态上下文后消息长度: {} -> {}", lastUserMessage.length(), enrichedMessage.length());
 
         // [Phase 5] 保存用户消息到数据库（只在首轮保存原始消息）

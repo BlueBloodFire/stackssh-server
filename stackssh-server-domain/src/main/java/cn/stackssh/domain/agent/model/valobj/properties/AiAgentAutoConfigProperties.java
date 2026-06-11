@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.agent.model.valobj.properties;
+package cn.stackssh.domain.agent.model.valobj.properties;
 
 import cn.stackssh.domain.agent.model.valobj.AiAgentConfigTableVO;
 import lombok.Data;

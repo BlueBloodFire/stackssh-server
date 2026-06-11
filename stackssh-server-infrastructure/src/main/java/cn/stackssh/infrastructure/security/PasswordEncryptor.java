@@ -1,4 +1,4 @@
-﻿package cn.stackssh.infrastructure.security;
+package cn.stackssh.infrastructure.security;
 
 import lombok.extern.slf4j.Slf4j;
 

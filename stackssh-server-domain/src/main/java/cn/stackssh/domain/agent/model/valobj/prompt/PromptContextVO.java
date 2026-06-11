@@ -1,4 +1,4 @@
-﻿package cn.stackssh.domain.agent.model.valobj.prompt;
+package cn.stackssh.domain.agent.model.valobj.prompt;
 
 import cn.stackssh.domain.agent.model.valobj.enhance.SearchContext;
 import lombok.Builder;
