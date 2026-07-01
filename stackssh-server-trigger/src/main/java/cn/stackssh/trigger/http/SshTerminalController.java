@@ -1,27 +1,47 @@
 package cn.stackssh.trigger.http;
 
-import cn.stackssh.api.dto.*;
+import cn.stackssh.api.dto.AccessTicketRequestDTO;
+import cn.stackssh.api.dto.AccessTicketResponseDTO;
+import cn.stackssh.api.dto.CommandApprovalRequestDTO;
+import cn.stackssh.api.dto.CommandCheckRequestDTO;
+import cn.stackssh.api.dto.CommandCheckResponseDTO;
+import cn.stackssh.api.dto.TerminalExecRequestDTO;
+import cn.stackssh.api.dto.TerminalExecResponseDTO;
+import cn.stackssh.api.dto.TerminalOpenRequestDTO;
+import cn.stackssh.api.dto.TerminalOpenResponseDTO;
+import cn.stackssh.api.dto.TerminalReadResponseDTO;
+import cn.stackssh.api.dto.TerminalResizeRequestDTO;
+import cn.stackssh.api.dto.TerminalSessionSummaryDTO;
+import cn.stackssh.api.dto.TerminalWriteRequestDTO;
 import cn.stackssh.api.response.Response;
 import cn.stackssh.domain.ssh.model.entity.TerminalSessionEntity;
 import cn.stackssh.domain.ssh.model.valobj.DangerousCommandProperties;
 import cn.stackssh.domain.ssh.service.ISshTerminalService;
+import cn.stackssh.trigger.support.CurrentUserSupport;
+import cn.stackssh.trigger.support.EphemeralAccessTicketService;
 import cn.stackssh.types.enums.ResponseCode;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.stream.Collectors;
 
-/**
- * SSH终端操作 HTTP 控制器
- * 提供终端会话的打开、原始I/O读写、大小调整、关闭等能力
- *
- * @author waissh dev
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/ssh/terminal")
 @CrossOrigin(origins = "*")
 public class SshTerminalController {
+
+    private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Resource
     private ISshTerminalService sshTerminalDomainService;
@@ -29,213 +49,227 @@ public class SshTerminalController {
     @Resource
     private DangerousCommandProperties dangerousCommandProperties;
 
-    @RequestMapping(value = "open", method = RequestMethod.POST)
+    @Resource
+    private CurrentUserSupport currentUserSupport;
+
+    @Resource
+    private EphemeralAccessTicketService accessTicketService;
+
+    @PostMapping("open")
     public Response<TerminalOpenResponseDTO> openTerminal(@RequestBody TerminalOpenRequestDTO requestDTO) {
         try {
-            log.info("打开终端会话 connectionId={}", requestDTO.getConnectionId());
+            String currentUserId = currentUserSupport.requireCurrentUserId();
+            currentUserSupport.requireOwnedConnection(requestDTO.getConnectionId());
 
             int cols = requestDTO.getCols() != null ? requestDTO.getCols() : 120;
             int rows = requestDTO.getRows() != null ? requestDTO.getRows() : 24;
-
             TerminalSessionEntity entity = sshTerminalDomainService.openTerminal(
-                    requestDTO.getConnectionId(), cols, rows);
-
-            // 等待 MOTD 积累完后 drain 缓冲区，作为 initialOutput 返回
-            // 这样前端不依赖轮询获取初始输出，避免时序问题导致"有时显示有时不显示"
-            String initialOutput = waitForInitialOutput(entity.getSessionId(), 2000);
+                    requestDTO.getConnectionId(), cols, rows, currentUserId);
 
             TerminalOpenResponseDTO response = TerminalOpenResponseDTO.builder()
                     .sessionId(entity.getSessionId())
                     .connectionId(entity.getConnectionId())
-                    .initialOutput(initialOutput)
+                    .initialOutput(waitForInitialOutput(entity.getSessionId()))
                     .build();
-
-            return Response.<TerminalOpenResponseDTO>builder()
-                    .code(ResponseCode.SUCCESS.getCode())
-                    .info(ResponseCode.SUCCESS.getInfo())
-                    .data(response)
-                    .build();
-        } catch (IllegalStateException | IllegalArgumentException e) {
-            log.warn("打开终端会话参数错误: {}", e.getMessage());
-            return Response.<TerminalOpenResponseDTO>builder()
-                    .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
-                    .info(e.getMessage())
-                    .build();
+            return success(response);
+        } catch (IllegalArgumentException | IllegalStateException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
-            log.error("打开终端会话失败", e);
-            return Response.<TerminalOpenResponseDTO>builder()
-                    .code(ResponseCode.UN_ERROR.getCode())
-                    .info("打开终端失败: " + e.getMessage())
-                    .build();
+            log.error("打开终端会话失败 connectionId={}", requestDTO.getConnectionId(), e);
+            return error("打开终端失败: " + e.getMessage());
         }
     }
 
-    /**
-     * 等待并收集 Shell 初始输出（Last login + MOTD + prompt）
-     * openTerminal 已等首数据+200ms，这里只需 drain 缓冲区
-     * 不做换行符转换，xterm.js 自己处理 \r 和 \n
-     */
-    private String waitForInitialOutput(String sessionId, long timeoutMs) {
-        // drain 缓冲区：openTerminal 已等待首数据+200ms，MOTD 应该已完整
+    @PostMapping("exec")
+    public Response<TerminalExecResponseDTO> execCommand(@RequestBody TerminalExecRequestDTO requestDTO) {
+        try {
+            currentUserSupport.requireOwnedTerminalSession(requestDTO.getSessionId());
+            String output = sshTerminalDomainService.executeCommand(requestDTO.getSessionId(), requestDTO.getCommand());
+            return success(TerminalExecResponseDTO.builder().output(output).build());
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
+        } catch (Exception e) {
+            log.error("执行命令失败 sessionId={}", requestDTO.getSessionId(), e);
+            return error("执行命令失败: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("write")
+    public Response<Void> writeToTerminal(@RequestBody TerminalWriteRequestDTO requestDTO) {
+        try {
+            currentUserSupport.requireOwnedTerminalSession(requestDTO.getSessionId());
+            sshTerminalDomainService.writeTerminal(requestDTO.getSessionId(), requestDTO.getInput());
+            return success(null);
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
+        } catch (Exception e) {
+            log.error("写入终端失败 sessionId={}", requestDTO.getSessionId(), e);
+            return error("写入终端失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("read")
+    public Response<TerminalReadResponseDTO> readFromTerminal(@RequestParam("sessionId") String sessionId) {
+        try {
+            currentUserSupport.requireOwnedTerminalSession(sessionId);
+            String output = sshTerminalDomainService.readTerminal(sessionId);
+            return success(TerminalReadResponseDTO.builder().output(output != null ? output : "").build());
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
+        } catch (Exception e) {
+            log.error("读取终端失败 sessionId={}", sessionId, e);
+            return error("读取终端失败: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("resize")
+    public Response<Void> resizeTerminal(@RequestBody TerminalResizeRequestDTO requestDTO) {
+        try {
+            currentUserSupport.requireOwnedTerminalSession(requestDTO.getSessionId());
+            sshTerminalDomainService.resizeTerminal(requestDTO.getSessionId(), requestDTO.getCols(), requestDTO.getRows());
+            return success(null);
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
+        } catch (Exception e) {
+            log.error("调整终端大小失败 sessionId={}", requestDTO.getSessionId(), e);
+            return error("调整终端大小失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("sessions")
+    public Response<List<TerminalSessionSummaryDTO>> listSessions(@RequestParam("connectionId") String connectionId) {
+        try {
+            String currentUserId = currentUserSupport.requireCurrentUserId();
+            currentUserSupport.requireOwnedConnection(connectionId);
+            List<TerminalSessionSummaryDTO> sessions = sshTerminalDomainService.listActiveSessions(connectionId, currentUserId)
+                    .stream()
+                    .map(this::toSummary)
+                    .collect(Collectors.toList());
+            return success(sessions);
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
+        } catch (Exception e) {
+            log.error("查询终端会话失败 connectionId={}", connectionId, e);
+            return error("查询终端会话失败: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("check-command")
+    public Response<CommandCheckResponseDTO> checkCommand(@RequestBody CommandCheckRequestDTO requestDTO) {
+        try {
+            if (requestDTO.getSessionId() != null && !requestDTO.getSessionId().isBlank()) {
+                currentUserSupport.requireOwnedTerminalSession(requestDTO.getSessionId());
+            }
+            String cmd = requestDTO.getCommand() == null ? "" : requestDTO.getCommand().trim();
+            for (String pattern : dangerousCommandProperties.getDangerousCommands()) {
+                if (pattern != null && !pattern.isBlank() && cmd.contains(pattern.trim())) {
+                    return success(CommandCheckResponseDTO.builder()
+                            .dangerous(true)
+                            .warning("检测到危险命令，请确认后再执行")
+                            .matchedPattern(pattern)
+                            .build());
+                }
+            }
+            return success(CommandCheckResponseDTO.builder().dangerous(false).build());
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
+        } catch (Exception e) {
+            log.error("检测危险命令失败", e);
+            return error("检测危险命令失败: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("approve-command")
+    public Response<Void> approveCommand(@RequestBody CommandApprovalRequestDTO requestDTO) {
+        try {
+            currentUserSupport.requireOwnedTerminalSession(requestDTO.getSessionId());
+            sshTerminalDomainService.approveDangerousCommand(requestDTO.getSessionId(), requestDTO.getCommand());
+            return success(null);
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
+        } catch (Exception e) {
+            log.error("确认危险命令失败 sessionId={}", requestDTO.getSessionId(), e);
+            return error("确认危险命令失败: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("ws-ticket")
+    public Response<AccessTicketResponseDTO> issueWsTicket(@RequestBody AccessTicketRequestDTO requestDTO) {
+        try {
+            String currentUserId = currentUserSupport.requireCurrentUserId();
+            currentUserSupport.requireOwnedTerminalSession(requestDTO.getSessionId());
+            EphemeralAccessTicketService.TicketRecord record =
+                    accessTicketService.issueWebSocketTicket(currentUserId, requestDTO.getSessionId());
+            return success(AccessTicketResponseDTO.builder()
+                    .ticket(record.getTicket())
+                    .expiresInSeconds(60L)
+                    .build());
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
+        } catch (Exception e) {
+            log.error("签发终端 WS 票据失败 sessionId={}", requestDTO.getSessionId(), e);
+            return error("签发终端 WS 票据失败: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("close")
+    public Response<Void> closeTerminal(@RequestParam("sessionId") String sessionId) {
+        try {
+            currentUserSupport.requireOwnedTerminalSession(sessionId);
+            sshTerminalDomainService.closeTerminal(sessionId);
+            return success(null);
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
+        } catch (Exception e) {
+            log.error("关闭终端会话失败 sessionId={}", sessionId, e);
+            return error("关闭终端会话失败: " + e.getMessage());
+        }
+    }
+
+    private String waitForInitialOutput(String sessionId) {
         String output = sshTerminalDomainService.readTerminal(sessionId);
         if (output == null || output.isEmpty()) {
             return "";
         }
-
-        // 额外 drain 一次，确保残余数据也拿到
-        try { Thread.sleep(50); } catch (InterruptedException ignored) {}
+        try {
+            Thread.sleep(50);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         String more = sshTerminalDomainService.readTerminal(sessionId);
-        if (more != null && !more.isEmpty()) {
-            output += more;
-        }
-
-        return output;
+        return more == null || more.isEmpty() ? output : output + more;
     }
 
-    @RequestMapping(value = "exec", method = RequestMethod.POST)
-    public Response<TerminalExecResponseDTO> execCommand(@RequestBody TerminalExecRequestDTO requestDTO) {
-        try {
-            String output = sshTerminalDomainService.executeCommand(
-                    requestDTO.getSessionId(), requestDTO.getCommand());
-
-            TerminalExecResponseDTO response = TerminalExecResponseDTO.builder()
-                    .output(output)
-                    .build();
-
-            return Response.<TerminalExecResponseDTO>builder()
-                    .code(ResponseCode.SUCCESS.getCode())
-                    .info(ResponseCode.SUCCESS.getInfo())
-                    .data(response)
-                    .build();
-        } catch (IllegalArgumentException e) {
-            log.warn("执行命令参数错误: {}", e.getMessage());
-            return Response.<TerminalExecResponseDTO>builder()
-                    .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
-                    .info(e.getMessage())
-                    .build();
-        } catch (Exception e) {
-            log.error("执行命令失败 sessionId={}", requestDTO.getSessionId(), e);
-            return Response.<TerminalExecResponseDTO>builder()
-                    .code(ResponseCode.UN_ERROR.getCode())
-                    .info("执行命令失败: " + e.getMessage())
-                    .build();
-        }
-    }
-
-    @RequestMapping(value = "write", method = RequestMethod.POST)
-    public Response<Void> writeToTerminal(@RequestBody TerminalWriteRequestDTO requestDTO) {
-        try {
-            sshTerminalDomainService.writeTerminal(requestDTO.getSessionId(), requestDTO.getInput());
-            return Response.<Void>builder()
-                    .code(ResponseCode.SUCCESS.getCode())
-                    .info(ResponseCode.SUCCESS.getInfo())
-                    .build();
-        } catch (IllegalArgumentException e) {
-            log.warn("写入终端参数错误: {}", e.getMessage());
-            return Response.<Void>builder()
-                    .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
-                    .info(e.getMessage())
-                    .build();
-        } catch (Exception e) {
-            log.error("写入终端失败 sessionId={}", requestDTO.getSessionId(), e);
-            return Response.<Void>builder()
-                    .code(ResponseCode.UN_ERROR.getCode())
-                    .info("写入终端失败: " + e.getMessage())
-                    .build();
-        }
-    }
-
-    @RequestMapping(value = "read", method = RequestMethod.GET)
-    public Response<TerminalReadResponseDTO> readFromTerminal(@RequestParam("sessionId") String sessionId) {
-        try {
-            String output = sshTerminalDomainService.readTerminal(sessionId);
-            TerminalReadResponseDTO response = TerminalReadResponseDTO.builder()
-                    .output(output != null ? output : "")
-                    .build();
-            return Response.<TerminalReadResponseDTO>builder()
-                    .code(ResponseCode.SUCCESS.getCode())
-                    .info(ResponseCode.SUCCESS.getInfo())
-                    .data(response)
-                    .build();
-        } catch (IllegalArgumentException e) {
-            log.warn("读取终端参数错误: {}", e.getMessage());
-            return Response.<TerminalReadResponseDTO>builder()
-                    .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
-                    .info(e.getMessage())
-                    .build();
-        } catch (Exception e) {
-            log.error("读取终端失败 sessionId={}", sessionId, e);
-            return Response.<TerminalReadResponseDTO>builder()
-                    .code(ResponseCode.UN_ERROR.getCode())
-                    .info("读取终端失败: " + e.getMessage())
-                    .build();
-        }
-    }
-
-    @RequestMapping(value = "resize", method = RequestMethod.POST)
-    public Response<Void> resizeTerminal(@RequestBody TerminalResizeRequestDTO requestDTO) {
-        try {
-            sshTerminalDomainService.resizeTerminal(
-                    requestDTO.getSessionId(), requestDTO.getCols(), requestDTO.getRows());
-
-            return Response.<Void>builder()
-                    .code(ResponseCode.SUCCESS.getCode())
-                    .info(ResponseCode.SUCCESS.getInfo())
-                    .build();
-        } catch (Exception e) {
-            log.error("调整终端大小失败 sessionId={}", requestDTO.getSessionId(), e);
-            return Response.<Void>builder()
-                    .code(ResponseCode.UN_ERROR.getCode())
-                    .info("调整终端大小失败: " + e.getMessage())
-                    .build();
-        }
-    }
-
-    /**
-     * 检测命令是否为危险命令（前端执行前调用，实现二次确认）
-     */
-    @RequestMapping(value = "check-command", method = RequestMethod.POST)
-    public Response<CommandCheckResponseDTO> checkCommand(@RequestBody CommandCheckRequestDTO requestDTO) {
-        String cmd = requestDTO.getCommand() == null ? "" : requestDTO.getCommand().trim();
-        for (String pattern : dangerousCommandProperties.getDangerousCommands()) {
-            if (cmd.contains(pattern.trim())) {
-                log.warn("检测到危险命令: command={} pattern={}", cmd, pattern);
-                CommandCheckResponseDTO response = CommandCheckResponseDTO.builder()
-                        .dangerous(true)
-                        .warning("检测到危险命令，请确认后再执行！")
-                        .matchedPattern(pattern)
-                        .build();
-                return Response.<CommandCheckResponseDTO>builder()
-                        .code(ResponseCode.SUCCESS.getCode())
-                        .info(ResponseCode.SUCCESS.getInfo())
-                        .data(response)
-                        .build();
-            }
-        }
-        return Response.<CommandCheckResponseDTO>builder()
-                .code(ResponseCode.SUCCESS.getCode())
-                .info(ResponseCode.SUCCESS.getInfo())
-                .data(CommandCheckResponseDTO.builder().dangerous(false).build())
+    private TerminalSessionSummaryDTO toSummary(TerminalSessionEntity entity) {
+        return TerminalSessionSummaryDTO.builder()
+                .sessionId(entity.getSessionId())
+                .connectionId(entity.getConnectionId())
+                .cols(entity.getCols())
+                .rows(entity.getRows())
+                .createdAt(entity.getCreatedAt() != null ? entity.getCreatedAt().format(FMT) : null)
+                .lastActiveAt(entity.getLastActiveAt() != null ? entity.getLastActiveAt().format(FMT) : null)
                 .build();
     }
 
-    @RequestMapping(value = "close", method = RequestMethod.POST)
-    public Response<Void> closeTerminal(@RequestParam("sessionId") String sessionId) {
-        try {
-            log.info("关闭终端会话 sessionId={}", sessionId);
-            sshTerminalDomainService.closeTerminal(sessionId);
-
-            return Response.<Void>builder()
-                    .code(ResponseCode.SUCCESS.getCode())
-                    .info(ResponseCode.SUCCESS.getInfo())
-                    .build();
-        } catch (Exception e) {
-            log.error("关闭终端会话失败 sessionId={}", sessionId, e);
-            return Response.<Void>builder()
-                    .code(ResponseCode.UN_ERROR.getCode())
-                    .info("关闭终端会话失败: " + e.getMessage())
-                    .build();
-        }
+    private <T> Response<T> success(T data) {
+        return Response.<T>builder()
+                .code(ResponseCode.SUCCESS.getCode())
+                .info(ResponseCode.SUCCESS.getInfo())
+                .data(data)
+                .build();
     }
 
+    private <T> Response<T> illegal(String message) {
+        return Response.<T>builder()
+                .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
+                .info(message)
+                .build();
+    }
+
+    private <T> Response<T> error(String message) {
+        return Response.<T>builder()
+                .code(ResponseCode.UN_ERROR.getCode())
+                .info(message)
+                .build();
+    }
 }

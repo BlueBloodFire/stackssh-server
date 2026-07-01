@@ -2,11 +2,15 @@ package cn.stackssh.domain.agent.model.valobj.enhance;
 
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 
 import java.util.Map;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class SearchContext {
     @Builder.Default
     private Map<String, String> serviceStatus = Map.of();

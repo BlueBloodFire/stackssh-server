@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.stackssh.infrastructure.dao.IConversationStateDao">
+
+    <resultMap id="conversationStateMap" type="cn.stackssh.infrastructure.dao.po.ConversationStatePO">
+        <id column="id" property="id"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="user_id" property="userId"/>
+        <result column="agent_id" property="agentId"/>
+        <result column="task_summary" property="taskSummary"/>
+        <result column="current_intent" property="currentIntent"/>
+        <result column="intent_summary" property="intentSummary"/>
+        <result column="tool_summary" property="toolSummary"/>
+        <result column="last_user_message_digest" property="lastUserMessageDigest"/>
+        <result column="cached_search_context" property="cachedSearchContext"/>
+        <result column="cached_rag_chunks" property="cachedRagChunks"/>
+        <result column="last_enhancement_cache_hit" property="lastEnhancementCacheHit"/>
+        <result column="last_enhancement_cache_reason" property="lastEnhancementCacheReason"/>
+        <result column="last_terminal_session_id" property="lastTerminalSessionId"/>
+        <result column="turn_count" property="turnCount"/>
+        <result column="context_version" property="contextVersion"/>
+        <result column="last_round_at" property="lastRoundAt"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="cn.stackssh.infrastructure.dao.po.ConversationStatePO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO chat_session_state (
+            session_id, user_id, agent_id, task_summary, current_intent, intent_summary,
+            tool_summary, last_user_message_digest, cached_search_context, cached_rag_chunks,
+            last_enhancement_cache_hit, last_enhancement_cache_reason,
+            last_terminal_session_id, turn_count, context_version, last_round_at,
+            created_at, updated_at
+        ) VALUES (
+            #{sessionId}, #{userId}, #{agentId}, #{taskSummary}, #{currentIntent}, #{intentSummary},
+            #{toolSummary}, #{lastUserMessageDigest}, #{cachedSearchContext}, #{cachedRagChunks},
+            #{lastEnhancementCacheHit}, #{lastEnhancementCacheReason},
+            #{lastTerminalSessionId}, #{turnCount}, #{contextVersion}, #{lastRoundAt},
+            now(), now()
+        )
+    </insert>
+
+    <insert id="upsert" parameterType="cn.stackssh.infrastructure.dao.po.ConversationStatePO">
+        INSERT INTO chat_session_state (
+            session_id, user_id, agent_id, task_summary, current_intent, intent_summary,
+            tool_summary, last_user_message_digest, cached_search_context, cached_rag_chunks,
+            last_enhancement_cache_hit, last_enhancement_cache_reason,
+            last_terminal_session_id, turn_count, context_version, last_round_at,
+            created_at, updated_at
+        ) VALUES (
+            #{sessionId}, #{userId}, #{agentId}, #{taskSummary}, #{currentIntent}, #{intentSummary},
+            #{toolSummary}, #{lastUserMessageDigest}, #{cachedSearchContext}, #{cachedRagChunks},
+            #{lastEnhancementCacheHit}, #{lastEnhancementCacheReason},
+            #{lastTerminalSessionId}, #{turnCount}, #{contextVersion}, #{lastRoundAt},
+            now(), now()
+        )
+        ON DUPLICATE KEY UPDATE
+            user_id = VALUES(user_id),
+            agent_id = VALUES(agent_id),
+            task_summary = VALUES(task_summary),
+            current_intent = VALUES(current_intent),
+            intent_summary = VALUES(intent_summary),
+            tool_summary = VALUES(tool_summary),
+            last_user_message_digest = VALUES(last_user_message_digest),
+            cached_search_context = VALUES(cached_search_context),
+            cached_rag_chunks = VALUES(cached_rag_chunks),
+            last_enhancement_cache_hit = VALUES(last_enhancement_cache_hit),
+            last_enhancement_cache_reason = VALUES(last_enhancement_cache_reason),
+            last_terminal_session_id = VALUES(last_terminal_session_id),
+            turn_count = VALUES(turn_count),
+            context_version = VALUES(context_version),
+            last_round_at = VALUES(last_round_at),
+            updated_at = now()
+    </insert>
+
+    <update id="updateTaskSummary">
+        UPDATE chat_session_state
+        SET task_summary = #{taskSummary}, updated_at = now()
+        WHERE session_id = #{sessionId}
+    </update>
+
+    <update id="updateIntentState">
+        UPDATE chat_session_state
+        SET current_intent = #{currentIntent},
+            intent_summary = #{intentSummary},
+            turn_count = #{turnCount},
+            last_round_at = #{lastRoundAt},
+            updated_at = now()
+        WHERE session_id = #{sessionId}
+    </update>
+
+    <update id="updateToolSummary">
+        UPDATE chat_session_state
+        SET tool_summary = #{toolSummary},
+            last_round_at = #{lastRoundAt},
+            updated_at = now()
+        WHERE session_id = #{sessionId}
+    </update>
+
+    <update id="updateTerminalBinding">
+        UPDATE chat_session_state
+        SET last_terminal_session_id = #{lastTerminalSessionId},
+            updated_at = now()
+        WHERE session_id = #{sessionId}
+    </update>
+
+    <select id="queryBySessionId" resultMap="conversationStateMap">
+        SELECT id, session_id, user_id, agent_id, task_summary, current_intent, intent_summary,
+               tool_summary, last_user_message_digest, cached_search_context, cached_rag_chunks,
+               last_enhancement_cache_hit, last_enhancement_cache_reason,
+               last_terminal_session_id, turn_count, context_version, last_round_at,
+               created_at, updated_at
+        FROM chat_session_state
+        WHERE session_id = #{sessionId}
+        LIMIT 1
+    </select>
+
+</mapper>

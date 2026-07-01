@@ -1,5 +1,7 @@
 package cn.stackssh.domain.agent.service.context;
 
+import cn.stackssh.domain.agent.model.entity.ConversationStateEntity;
+import cn.stackssh.domain.agent.model.valobj.enhance.SearchContext;
 import cn.stackssh.domain.agent.model.valobj.prompt.MilestoneVO;
 import cn.stackssh.domain.agent.model.valobj.prompt.PromptContextVO;
 import cn.stackssh.domain.agent.service.IChatContextService;
@@ -38,6 +40,14 @@ public class ChatContextService implements IChatContextService {
     @Override
     @SuppressWarnings("unchecked")
     public PromptContextVO buildPromptContext(String sessionId, String userId, String terminalSessionId, List<Map<String, Object>> messageHistory) {
+        return buildPromptContext(sessionId, userId, terminalSessionId, messageHistory, null, null, List.of());
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public PromptContextVO buildPromptContext(String sessionId, String userId, String terminalSessionId,
+                                              List<Map<String, Object>> messageHistory, ConversationStateEntity conversationState,
+                                              SearchContext searchContext, List<String> ragChunks) {
         Map<String, Object> finalCtx = new HashMap<>();
 
         for (ContextProvider provider : providers) {
@@ -48,7 +58,7 @@ public class ChatContextService implements IChatContextService {
             }
         }
 
-        return PromptContextVO.builder()
+        PromptContextVO promptContextVO = PromptContextVO.builder()
                 .osInfo((String) finalCtx.get("osInfo"))
                 .currentUser((String) finalCtx.get("currentUser"))
                 .currentDirectory((String) finalCtx.get("currentDirectory"))
@@ -57,6 +67,21 @@ public class ChatContextService implements IChatContextService {
                 .toolResultSummary((String) finalCtx.get("toolResultSummary"))
                 .taskDescription((String) finalCtx.get("taskDescription"))
                 .build();
+
+        if (conversationState != null) {
+            if (conversationState.getTaskSummary() != null && !conversationState.getTaskSummary().isBlank()) {
+                promptContextVO.setTaskDescription(conversationState.getTaskSummary());
+            }
+            if (conversationState.getToolSummary() != null && !conversationState.getToolSummary().isBlank()) {
+                promptContextVO.setToolResultSummary(conversationState.getToolSummary());
+            }
+        }
+
+        if (searchContext != null && !searchContext.isEmpty()) {
+            promptContextVO.setSearchContext(searchContext);
+        }
+
+        return promptContextVO;
     }
 
     @Override

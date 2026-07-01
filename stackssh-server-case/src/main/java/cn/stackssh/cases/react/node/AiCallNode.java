@@ -4,15 +4,12 @@ import cn.stackssh.api.dto.ChatRequestDTO;
 import cn.stackssh.api.dto.ReActResultDTO;
 import cn.stackssh.cases.react.AbstractAIAgentReActSupport;
 import cn.stackssh.cases.react.factory.DefaultReActFactory;
+import cn.stackssh.cases.react.service.IConversationContextAssembler;
+import cn.stackssh.domain.agent.model.entity.RoundResultEntity;
+import cn.stackssh.domain.agent.model.entity.ToolExecutionRecordEntity;
 import cn.stackssh.domain.agent.model.valobj.AiAgentRegisterVO;
-import cn.stackssh.domain.agent.model.valobj.enhance.SearchContext;
-import cn.stackssh.domain.agent.service.IPromptService;
-import cn.stackssh.domain.agent.service.IChatContextService;
-import cn.stackssh.domain.agent.service.IIntentService;
-import cn.stackssh.domain.agent.service.IIntentEnhancerService;
-import cn.stackssh.domain.agent.model.valobj.intent.IntentResultVO;
-import cn.stackssh.domain.agent.adapter.repository.IChatHistoryRepository;
-import cn.stackssh.domain.agent.model.entity.ChatMessageEntity;
+import cn.stackssh.domain.agent.model.valobj.context.PromptEnvelopeVO;
+import cn.stackssh.domain.agent.service.IConversationRoundService;
 import cn.stackssh.domain.agent.service.armory.factory.DefaultArmoryFactory;
 import cn.stackssh.domain.agent.service.armory.matter.mcp.server.SshExecuteMcpService;
 import cn.stackssh.domain.agent.service.armory.matter.tools.SshExecuteAdkTool;
@@ -23,39 +20,19 @@ import com.google.adk.events.EventActions;
 import com.google.adk.runner.Runner;
 import com.google.adk.sessions.Session;
 import com.google.genai.types.Content;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
-import jakarta.annotation.Resource;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
-/**
- * AI 调用节点（ReAct 循环核心）
- *
- * <p>职责：
- * 1. 调用 ADK runner.runAsync() 获取事件流
- * 2. 处理文本内容，发送 SSE 事件
- * 3. 从 event.actions().stateDelta() 检测工具执行结果
- * 4. 如果有工具调用：存储到上下文，发送 SSE 事件，路由到 ToolCallNode
- * 5. 如果无工具调用：路由到 LoopDecisionNode
- *
- * <p>核心修复：
- * SpringAI 的 ChatModel.call() 自动执行工具，导致 event.functionCalls() 永远为空。
- * 修复方案：从 event.actions().stateDelta() 检测工具执行结果。
- * stateDelta 包含工具输出（key = output-key, value = 执行结果）。
- *
- * <p>ReAct 循环流程：
- * <pre>
- * RootNode
- *   └→ AiCallNode（调用 ADK runner，解析事件）
- *         ├→ [stateDelta 有结果] ToolCallNode → AiCallNode（循环）
- *         └→ [无工具调用] LoopDecisionNode → UserFeedbackNode
- * </pre>
- *
- * @author wangjin
- * 2026/5/4
- */
 @Slf4j
 @Component("reactAiCallNode")
 public class AiCallNode extends AbstractAIAgentReActSupport {
@@ -64,145 +41,75 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
     private DefaultArmoryFactory defaultArmoryFactory;
 
     @Resource
-    private SshExecuteAdkTool sshExecuteAdkTool;
+    private IConversationContextAssembler conversationContextAssembler;
 
     @Resource
-    private IPromptService promptService;
-    
-    @Resource
-    private IChatContextService chatContextService;
-    
-    @Resource
-    private IIntentService intentService;
+    private IConversationRoundService conversationRoundService;
 
-    @Resource
-    private IIntentEnhancerService intentEnhancerService;
-
-    @Resource
-    private IChatHistoryRepository chatHistoryRepository;
-
-    @Resource
-    private cn.stackssh.domain.knowledge.service.IKnowledgeService knowledgeService;
-
-    /** SSE 事件发送间隔（字符数） */
-    private static final int SSE_BATCH_SIZE = 20;
-
-    /** tool name 映射：stateDelta key -> tool name */
     private static final Map<String, String> STATE_DELTA_TOOL_MAPPING = Map.of(
             "ssh_result", "executeCommand"
     );
 
     @Override
     protected ReActResultDTO doApply(ChatRequestDTO requestParameter, DefaultReActFactory.DynamicContext dynamicContext) throws Exception {
-        log.info("ReAct AiCallNode - 开始 AI 调用，第 {} 步", dynamicContext.getStep() + 1);
+        log.info("ReAct AiCallNode - start step {}", dynamicContext.getStep() + 1);
 
         String agentId = dynamicContext.getAgentId();
-
-        // 1. 获取 Agent 注册信息和 ADK Runner
         AiAgentRegisterVO aiAgentRegisterVO = defaultArmoryFactory.getAiAgentRegisterVO(agentId);
         if (aiAgentRegisterVO == null) {
             throw new RuntimeException("Agent not found: " + agentId);
         }
 
         Runner runner = aiAgentRegisterVO.getRunner();
-
-        // 2. 获取最新用户消息
         String lastUserMessage = getLastUserMessage(requestParameter, dynamicContext);
-
-        // [Phase 3] 意图识别
-        IntentResultVO intentResult = intentService.classify(dynamicContext.getSessionId(), dynamicContext.getUserId(), lastUserMessage);
-        log.info("识别到用户意图: {}, 置信度: {}", intentResult.getIntent().getLabel(), intentResult.getConfidence());
-
-        // 将意图保存到上下文供后续使用
-        dynamicContext.setCurrentIntent(intentResult.getIntent().name());
-
-        // [Phase 4] 意图增强 — 首轮调用时执行，后续轮次跳过（避免重复搜索）
-        SearchContext searchContext = null;
-        if (dynamicContext.getStep() == 0) {
-            searchContext = intentEnhancerService.enhance(dynamicContext.getTerminalSessionId(), lastUserMessage);
-            if (searchContext != null && !searchContext.isEmpty()) {
-                log.info("意图增强完成: 服务状态={}, 文件={}, 日志={}",
-                        searchContext.getServiceStatus().size(),
-                        searchContext.getFileContents().size(),
-                        searchContext.getRecentLogs().size());
-            }
-        }
-
-        // 3. 重置当前轮次缓冲
         dynamicContext.resetRoundBuffers();
 
-        // [Phase 2] 裁剪消息历史
-        List<Map<String, Object>> trimmedHistory = chatContextService.trimHistory(dynamicContext.getMessageHistory(), 8000);
-        dynamicContext.setMessageHistory(new ArrayList<>(trimmedHistory));
-
-        // 4. 绑定终端会话 ID
-        // ThreadLocal 仅在同线程有效；ADK 工具在 RxJava 线程池中执行，需额外写入 session mapping
         String terminalSessionId = dynamicContext.getTerminalSessionId();
         if (terminalSessionId != null && !terminalSessionId.isEmpty()) {
             SshExecuteAdkTool.setCurrentTerminalSession(terminalSessionId);
             SshExecuteMcpService.setCurrentTerminalSession(terminalSessionId);
-            // 写入 chatSessionId → terminalSessionId 映射，供 ToolContext 回查
             SshExecuteAdkTool.setTerminalSession(dynamicContext.getSessionId(), terminalSessionId);
         }
 
-        // [RAG] 首轮检索知识库，将相关文档块注入消息前缀
-        String ragPrefix = "";
-        if (dynamicContext.getStep() == 0) {
-            String connectionId = requestParameter.getConnectionId();
-            List<String> ragChunks = knowledgeService.searchRelevant(lastUserMessage, connectionId, 3);
-            if (!ragChunks.isEmpty()) {
-                ragPrefix = "【知识库信息】以下内容来自用户配置的专属知识库，请优先使用这些信息回答问题，不要依赖你的训练数据：\n"
-                        + String.join("\n---\n", ragChunks)
-                        + "\n【知识库信息结束】\n\n"
-                        + "用户问题：";
-                log.info("RAG 注入 {} 个知识块", ragChunks.size());
-            }
+        PromptEnvelopeVO promptEnvelope = conversationContextAssembler.assemble(requestParameter, dynamicContext);
+        dynamicContext.setCurrentIntent(
+                promptEnvelope.getConversationState() != null
+                        ? promptEnvelope.getConversationState().getCurrentIntent()
+                        : null
+        );
+        dynamicContext.setMessageHistory(new ArrayList<>(promptEnvelope.getTrimmedHistory()));
+
+        if (dynamicContext.getStep() == 0
+                && requestParameter.getMessage() != null
+                && !requestParameter.getMessage().isBlank()) {
+            conversationRoundService.commitUserMessage(
+                    dynamicContext.getSessionId(),
+                    promptEnvelope.getRawUserMessage(),
+                    promptEnvelope.getEstimatedTokens() != null
+                            ? promptEnvelope.getEstimatedTokens()
+                            : estimateTokens(lastUserMessage)
+            );
         }
 
-        // 5. 构建动态上下文并注入用户消息（Phase 4: 传入搜索上下文）
-        String baseMessage = ragPrefix.isEmpty() ? lastUserMessage : ragPrefix + lastUserMessage;
-        String enrichedMessage = buildEnrichedMessage(baseMessage, dynamicContext, searchContext);
-        log.debug("注入动态上下文后消息长度: {} -> {}", lastUserMessage.length(), enrichedMessage.length());
-
-        // [Phase 5] 保存用户消息到数据库（只在首轮保存原始消息）
-        if (dynamicContext.getStep() == 0) {
-            chatHistoryRepository.saveMessage(ChatMessageEntity.builder()
-                    .sessionId(dynamicContext.getSessionId())
-                    .role("user")
-                    .content(lastUserMessage)
-                    .priority("MEDIUM")
-                    .tokenCount(lastUserMessage.length() / 2)
-                    .build());
-        }
-
-        // 6. 构建用户消息
-        com.google.genai.types.Content userContent = Content.builder()
+        Content userContent = Content.builder()
                 .role("user")
-                .parts(com.google.genai.types.Part.builder().text(enrichedMessage).build())
+                .parts(com.google.genai.types.Part.builder().text(promptEnvelope.getFinalUserMessage()).build())
                 .build();
 
-        // 7. 重置 ReAct 循环标志
         dynamicContext.setStopReason(null);
         dynamicContext.setErrorMessage(null);
 
-        // 8. 调用 ADK Runner 并处理事件流
         ResponseBodyEmitter emitter = dynamicContext.getEmitter();
         StringBuilder textAccumulator = new StringBuilder();
+        List<ToolExecutionRecordEntity> toolExecutionRecords = new ArrayList<>();
+        Set<String> processedToolFingerprints = new HashSet<>();
         int roundToolCalls = 0;
         boolean hasError = false;
         StringBuilder errorBuilder = new StringBuilder();
 
-        log.info("调用 ADK Runner，用户消息: {}", lastUserMessage.length() > 200
-                ? lastUserMessage.substring(0, 200) + "..." : lastUserMessage);
-
-        // 确保 ADK Runner 内部 Session 存在
-        // InMemoryRunner 要求 runAsync 前必须先创建 Session，否则抛 "Session not found"
-        ensureAdkSession(runner, aiAgentRegisterVO.getAppName(),
-                dynamicContext.getUserId(), dynamicContext.getSessionId());
+        ensureAdkSession(runner, aiAgentRegisterVO.getAppName(), dynamicContext.getUserId(), dynamicContext.getSessionId());
 
         try {
-            // ADK Runner 会自动执行工具（SpringAI ChatModel.call() 内部执行）
-            // 事件流中 event.functionCalls() 为空，但 event.actions().stateDelta() 包含工具结果
             Iterator<Event> events = runner.runAsync(
                     dynamicContext.getUserId(),
                     dynamicContext.getSessionId(),
@@ -210,129 +117,111 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
                     RunConfig.builder().build()
             ).blockingIterable().iterator();
 
-            int eventCount = 0;
             while (events.hasNext()) {
                 Event event = events.next();
-                eventCount++;
 
-                event.stringifyContent();
-                log.debug("处理第 {} 个事件: final={}, content_len={}",
-                        eventCount,
-                        event.finalResponse(),
-                        event.stringifyContent().length());
-
-                // 8.1 处理文本内容（模型的响应文本，包括工具调用后的总结）
                 String eventText = event.stringifyContent();
-                if (!eventText.isBlank()) {
+                if (eventText != null && !eventText.isBlank()) {
                     textAccumulator.append(eventText);
                     dynamicContext.setAssistantContent(textAccumulator);
                     sendTextEvent(emitter, eventText, textAccumulator.toString());
                 }
 
-                // 8.2 从 stateDelta 检测工具执行结果
                 EventActions actions = event.actions();
-                if (actions != null) {
-                    java.util.Map<String, Object> stateDelta = actions.stateDelta();
-                    if (stateDelta != null && !stateDelta.isEmpty()) {
-                        log.info("检测到 stateDelta 变更: keys={}", stateDelta.keySet());
-
-                        for (Map.Entry<String, Object> entry : stateDelta.entrySet()) {
-                            String stateKey = entry.getKey();
-                            Object stateValue = entry.getValue();
-
-                            // 跳过内部状态键（如 "REMOVED"）
-                            if ("REMOVED".equals(stateValue)) {
-                                continue;
-                            }
-
-                            String toolName = resolveToolName(stateKey);
-                            String resultContent = formatStateValue(stateValue);
-                            String toolCallId = "call_" + stateKey + "_" + System.currentTimeMillis();
-
-                            log.info("工具执行结果: stateKey={}, toolName={}, result_length={}",
-                                    stateKey, toolName, resultContent.length());
-
-                            // 存储工具调用信息
-                            Map<String, Object> toolCallInfo = new HashMap<>();
-                            toolCallInfo.put("id", toolCallId);
-                            toolCallInfo.put("name", toolName);
-                            toolCallInfo.put("args", "");
-                            dynamicContext.getCurrentToolCalls().add(toolCallInfo);
-
-                            // 存储工具结果
-                            Map<String, Object> toolResultInfo = new HashMap<>();
-                            toolResultInfo.put("id", toolCallId);
-                            toolResultInfo.put("name", toolName);
-                            toolResultInfo.put("content", resultContent);
-                            toolResultInfo.put("status", "success");
-                            dynamicContext.getCurrentToolResults().add(toolResultInfo);
-
-                            // 发送 SSE 工具调用事件
-                            sendToolCallEvent(emitter, toolCallId, toolName, "executing");
-
-                            // 发送 SSE 工具结果事件
-                            sendToolResultEvent(emitter, toolCallId, resultContent, "success");
-
-                            roundToolCalls++;
-                            dynamicContext.incrementTotalToolCalls();
-
-                            // 记录执行的命令到上下文
-                            if ("executeCommand".equals(toolName) && !resultContent.isEmpty()) {
-                                recordExecutedCommand(dynamicContext, resultContent);
-                            }
-
-                            // 记录里程碑（工具结果）
-                            promptService.detectAndRecordMilestone(
-                                    dynamicContext.getSessionId(), "tool", resultContent);
-                            
-                            // 记录到上下文提供者中
-                            chatContextService.pushToolResult(dynamicContext.getSessionId(), toolName, resultContent);
-                        }
-                    }
+                if (actions == null) {
+                    continue;
                 }
 
-                // 8.3 记录 assistant 内容到消息历史
-                if (event.content().isPresent()) {
-                    Content content = event.content().get();
-                    String role = content.role().orElse("assistant");
-                    if ("assistant".equals(role)) {
-                        String text = event.stringifyContent();
-                        if (!text.isBlank()) {
-                            dynamicContext.appendAssistantMessage(text);
-                        }
+                Map<String, Object> stateDelta = actions.stateDelta();
+                if (stateDelta == null || stateDelta.isEmpty()) {
+                    continue;
+                }
+
+                for (Map.Entry<String, Object> entry : stateDelta.entrySet()) {
+                    String stateKey = entry.getKey();
+                    Object stateValue = entry.getValue();
+                    if ("REMOVED".equals(stateValue)) {
+                        continue;
                     }
+
+                    String toolName = resolveToolName(stateKey);
+                    String resultContent = formatStateValue(stateValue);
+                    String toolFingerprint = buildToolFingerprint(stateKey, resultContent);
+                    if (!processedToolFingerprints.add(toolFingerprint)) {
+                        log.debug("Skip duplicated tool result in same round: {}", toolFingerprint);
+                        continue;
+                    }
+                    String toolCallId = "call_" + stateKey + "_" + System.currentTimeMillis();
+
+                    Map<String, Object> toolCallInfo = new HashMap<>();
+                    toolCallInfo.put("id", toolCallId);
+                    toolCallInfo.put("name", toolName);
+                    toolCallInfo.put("args", "");
+                    dynamicContext.getCurrentToolCalls().add(toolCallInfo);
+
+                    Map<String, Object> toolResultInfo = new HashMap<>();
+                    toolResultInfo.put("id", toolCallId);
+                    toolResultInfo.put("name", toolName);
+                    toolResultInfo.put("content", resultContent);
+                    toolResultInfo.put("status", "success");
+                    dynamicContext.getCurrentToolResults().add(toolResultInfo);
+
+                    sendToolCallEvent(emitter, toolCallId, toolName, "executing");
+                    sendToolResultEvent(emitter, toolCallId, resultContent, "success");
+
+                    roundToolCalls++;
+                    dynamicContext.incrementTotalToolCalls();
+
+                    if ("executeCommand".equals(toolName) && !resultContent.isEmpty()) {
+                        recordExecutedCommand(dynamicContext, resultContent);
+                    }
+
+                    toolExecutionRecords.add(ToolExecutionRecordEntity.builder()
+                            .toolCallId(toolCallId)
+                            .toolName(toolName)
+                            .resultContent(resultContent)
+                            .status("success")
+                            .estimatedTokens(estimateTokens(resultContent))
+                            .build());
+
+                    conversationRoundService.commitToolResult(
+                            dynamicContext.getSessionId(),
+                            toolName,
+                            toolCallId,
+                            resultContent,
+                            "success",
+                            estimateTokens(resultContent)
+                    );
                 }
             }
-
-            log.info("ADK Runner 事件流处理完成，共 {} 个事件", eventCount);
-
         } catch (Exception e) {
-            log.error("ADK Runner 调用失败", e);
+            log.error("ADK Runner call failed", e);
             hasError = true;
             errorBuilder.append("ADK Runner error: ").append(e.getMessage());
             dynamicContext.setErrorMessage(errorBuilder.toString());
             dynamicContext.setStopReason("error");
         } finally {
-            // 仅清除 ThreadLocal（线程隔离清理），不清除 sessionTerminalMapping
-            // mapping 的生命周期由 bindTerminal / unbindTerminal 管理，这里不能清除，
-            // 否则下次发消息时如果客户端 activeTerminalSessionId 为 null，工具就找不到 session
             if (terminalSessionId != null && !terminalSessionId.isEmpty()) {
                 SshExecuteAdkTool.clearCurrentTerminalSession();
                 SshExecuteMcpService.clearCurrentTerminalSession();
             }
         }
 
-        // 9. 更新步数和工具调用统计
+        if (textAccumulator.length() > 0) {
+            dynamicContext.appendAssistantMessage(textAccumulator.toString());
+            conversationRoundService.commitAssistantMessage(
+                    dynamicContext.getSessionId(),
+                    textAccumulator.toString(),
+                    estimateTokens(textAccumulator.toString())
+            );
+        }
+
         dynamicContext.incrementStep();
         dynamicContext.getResult().setTotalSteps(dynamicContext.getStep());
         dynamicContext.getResult().setTotalToolCalls(
                 dynamicContext.getResult().getTotalToolCalls() + roundToolCalls
         );
 
-        log.info("ReAct AiCallNode - 第 {} 步完成，本轮工具调用 {} 次，文本长度 {}",
-                dynamicContext.getStep(), roundToolCalls, textAccumulator.length());
-
-        // 10. 发送本轮结束事件
         sendRoundEndEvent(
                 dynamicContext.getEmitter(),
                 dynamicContext.getStep(),
@@ -341,23 +230,28 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
                 dynamicContext.getResult().getTotalToolCalls()
         );
 
-        // [Phase 5] 保存助手回复到数据库（如果是最终回复，或者包含实质性内容）
-        if (textAccumulator.length() > 0) {
-            chatHistoryRepository.saveMessage(ChatMessageEntity.builder()
-                    .sessionId(dynamicContext.getSessionId())
-                    .role("assistant")
-                    .content(textAccumulator.toString())
-                    .priority("MEDIUM")
-                    .tokenCount(textAccumulator.length() / 2)
-                    .build());
-        }
-
-        // 11. 错误处理
         if (hasError) {
             dynamicContext.setStopReason("error");
         }
 
-        // 12. 路由
+        conversationRoundService.finishRound(RoundResultEntity.builder()
+                .sessionId(dynamicContext.getSessionId())
+                .userId(dynamicContext.getUserId())
+                .agentId(dynamicContext.getAgentId())
+                .terminalSessionId(dynamicContext.getTerminalSessionId())
+                .rawUserMessage(promptEnvelope.getRawUserMessage())
+                .assistantMessage(textAccumulator.toString())
+                .ragChunks(promptEnvelope.getRagChunks())
+                .currentIntent(dynamicContext.getCurrentIntent())
+                .searchContext(promptEnvelope.getSearchContext())
+                .enhancementCacheHit(promptEnvelope.getEnhancementCacheHit())
+                .enhancementCacheReason(promptEnvelope.getEnhancementCacheReason())
+                .toolExecutions(toolExecutionRecords)
+                .success(!hasError)
+                .errorMessage(hasError ? errorBuilder.toString() : null)
+                .totalSteps(dynamicContext.getStep())
+                .build());
+
         return router(requestParameter, dynamicContext);
     }
 
@@ -366,43 +260,31 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
             ChatRequestDTO requestParameter,
             DefaultReActFactory.DynamicContext dynamicContext) throws Exception {
 
-        // 检查是否应该终止
         String stopReason = dynamicContext.getStopReason();
         if (stopReason != null) {
-            log.info("检测到终止条件: {}, 路由到 UserFeedbackNode", stopReason);
             return getBean("reactUserFeedbackNode");
         }
 
-        // 检查是否达到最大步数
         if (dynamicContext.getStep() >= dynamicContext.getMaxSteps()) {
-            log.info("达到最大步数 {}, 路由到 UserFeedbackNode", dynamicContext.getMaxSteps());
             dynamicContext.setStopReason("max_steps");
             return getBean("reactUserFeedbackNode");
         }
 
-        // 检查本轮是否有工具调用（从 stateDelta 检测到的）
         if (!dynamicContext.getCurrentToolCalls().isEmpty()) {
-            log.info("检测到 {} 个工具调用，路由到 ToolCallNode",
-                    dynamicContext.getCurrentToolCalls().size());
             return getBean("reactToolCallNode");
         }
 
-        // 无工具调用 → ReAct 循环完成
-        log.info("无工具调用，ReAct 循环完成，路由到 LoopDecisionNode");
         return getBean("reactLoopDecisionNode");
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    //  辅助方法
-    // ═══════════════════════════════════════════════════════════════
-
-    /**
-     * 获取最新用户消息
-     */
     private String getLastUserMessage(ChatRequestDTO requestParameter,
-                                       DefaultReActFactory.DynamicContext dynamicContext) {
+                                      DefaultReActFactory.DynamicContext dynamicContext) {
         if (requestParameter.getMessage() != null && !requestParameter.getMessage().isEmpty()) {
             return requestParameter.getMessage();
+        }
+
+        if (dynamicContext.getResolvedUserMessage() != null && !dynamicContext.getResolvedUserMessage().isBlank()) {
+            return dynamicContext.getResolvedUserMessage();
         }
 
         List<Map<String, Object>> history = dynamicContext.getMessageHistory();
@@ -416,48 +298,17 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
         return "";
     }
 
-    /**
-     * 判断事件文本是否是工具执行结果的重复
-     * <p>SpringAI 自动执行工具后，模型会在文本中描述工具结果，
-     * 但我们已经在 stateDelta 中获取了原始结果，避免重复展示
-     */
-    private boolean isToolResultText(String text, Event event) {
-        // 检查是否是 FunctionResponse 事件（工具响应）
-        if (event.content().isPresent()) {
-            Content content = event.content().get();
-            // 检查是否包含 FunctionResponse parts
-            if (content.parts().isPresent()) {
-                for (com.google.genai.types.Part part : content.parts().get()) {
-                    if (part.functionResponse().isPresent()) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * 从 stateDelta key 解析工具名称
-     */
     private String resolveToolName(String stateKey) {
-        // 已知映射
         String mapped = STATE_DELTA_TOOL_MAPPING.get(stateKey);
         if (mapped != null) {
             return mapped;
         }
-
-        // 从 key 推断：去掉 _result 后缀
         if (stateKey.endsWith("_result")) {
             return stateKey.substring(0, stateKey.length() - 7);
         }
-
         return stateKey;
     }
 
-    /**
-     * 格式化 stateDelta 值为字符串
-     */
     private String formatStateValue(Object value) {
         if (value == null) {
             return "";
@@ -472,13 +323,6 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    //  Phase 1: 动态上下文注入
-    // ═══════════════════════════════════════════════════════════════
-
-    /**
-     * 从工具结果中提取命令并记录到最近命令列表
-     */
     private void recordExecutedCommand(DefaultReActFactory.DynamicContext dynamicContext, String toolResult) {
         if (toolResult.length() > 1000) {
             dynamicContext.addRecentCommand(truncate(toolResult, 80) + "...");
@@ -488,15 +332,20 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
     }
 
     private String truncate(String s, int max) {
-        if (s == null) return "";
+        if (s == null) {
+            return "";
+        }
         return s.length() > max ? s.substring(0, max) : s;
     }
 
-    /**
-     * 确保 ADK Runner 内部 Session 已注册。
-     * InMemoryRunner 的 runAsync 不会自动创建 Session，必须先调用 sessionService().createSession()，
-     * 否则首次对话或服务重启后会抛 "Session not found"。
-     */
+    private int estimateTokens(String content) {
+        return content == null ? 0 : content.length() / 2;
+    }
+
+    private String buildToolFingerprint(String stateKey, String resultContent) {
+        return stateKey + "::" + (resultContent == null ? "" : resultContent);
+    }
+
     private void ensureAdkSession(Runner runner, String appName, String userId, String sessionId) {
         try {
             Session existing = runner.sessionService()
@@ -506,8 +355,7 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
                 createAdkSession(runner, appName, userId, sessionId);
             }
         } catch (Exception e) {
-            // getSession 不存在时部分 ADK 版本会抛异常，fallback 到直接创建
-            log.debug("ADK getSession 异常，尝试创建: {}", e.getMessage());
+            log.debug("ADK getSession failed, creating session instead: {}", e.getMessage());
             createAdkSession(runner, appName, userId, sessionId);
         }
     }
@@ -517,31 +365,10 @@ public class AiCallNode extends AbstractAIAgentReActSupport {
             runner.sessionService()
                     .createSession(appName, userId, new HashMap<>(), sessionId)
                     .blockingGet();
-            log.info("ADK Session 已创建 appName={} userId={} sessionId={}", appName, userId, sessionId);
+            log.info("ADK session created: appName={} userId={} sessionId={}", appName, userId, sessionId);
         } catch (Exception ex) {
-            // 并发情况下可能已存在，忽略
-            log.warn("ADK Session 创建失败（可能已存在）: {}", ex.getMessage());
+            log.warn("ADK session create skipped: {}", ex.getMessage());
         }
-    }
-
-    /**
-     * 构建注入了动态上下文的用户消息
-     * 委托 IPromptService 完成环境采集、里程碑获取、前缀构建（含 Phase 4 意图增强）
-     */
-    private String buildEnrichedMessage(String userMessage, DefaultReActFactory.DynamicContext dynamicContext,
-                                        SearchContext searchContext) {
-        // 记录用户消息的里程碑
-        promptService.detectAndRecordMilestone(dynamicContext.getSessionId(), "user", userMessage);
-
-        // 委托领域服务构建富化消息
-        return promptService.buildEnrichedMessage(
-                userMessage,
-                dynamicContext.getSessionId(),
-                dynamicContext.getTerminalSessionId(),
-                dynamicContext.getRecentCommands(),
-                dynamicContext.getMessageHistory(),
-                searchContext
-        );
     }
 
 }

@@ -10,5 +10,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class CommandCheckRequestDTO {
+    private String sessionId;
     private String command;
 }

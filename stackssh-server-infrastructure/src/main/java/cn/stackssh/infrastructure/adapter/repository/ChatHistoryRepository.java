@@ -10,9 +10,10 @@ import cn.stackssh.infrastructure.dao.IChatSessionDao;
 import cn.stackssh.infrastructure.dao.po.ChatMessagePO;
 import cn.stackssh.infrastructure.dao.po.ChatMilestonePO;
 import cn.stackssh.infrastructure.dao.po.ChatSessionPO;
+import jakarta.annotation.Resource;
 import org.springframework.stereotype.Repository;
 
-import jakarta.annotation.Resource;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -62,12 +63,10 @@ public class ChatHistoryRepository implements IChatHistoryRepository {
         if (pos == null || pos.isEmpty()) {
             return Collections.emptyList();
         }
-        
-        // 数据库由于使用 ORDER BY id DESC，返回的是 [最新, 较旧, 最旧]
-        // 为了 LLM 对话的正常顺序，我们需要将其反转为 [最旧, 较旧, 最新]
-        List<ChatMessagePO> reversedPos = new java.util.ArrayList<>(pos);
+
+        List<ChatMessagePO> reversedPos = new ArrayList<>(pos);
         Collections.reverse(reversedPos);
-        
+
         return reversedPos.stream().map(po -> ChatMessageEntity.builder()
                 .id(po.getId())
                 .sessionId(po.getSessionId())
@@ -83,29 +82,40 @@ public class ChatHistoryRepository implements IChatHistoryRepository {
 
     @Override
     public List<ChatMessageEntity> getMessagesWithBudget(String sessionId, int tokenBudget) {
-        // 查出最近的一定数量的消息
-        List<ChatMessageEntity> recent = getRecentMessages(sessionId, 100);
-        if (recent.isEmpty() || tokenBudget <= 0) {
+        if (tokenBudget <= 0) {
+            return Collections.emptyList();
+        }
+
+        int limit = 100;
+        List<ChatMessageEntity> recent = getRecentMessages(sessionId, limit);
+        while (shouldExpandHistory(recent, tokenBudget, limit)) {
+            limit = Math.min(limit * 2, 2000);
+            List<ChatMessageEntity> expanded = getRecentMessages(sessionId, limit);
+            if (expanded.size() == recent.size()) {
+                recent = expanded;
+                break;
+            }
+            recent = expanded;
+        }
+
+        if (recent.isEmpty()) {
             return recent;
         }
 
-        List<ChatMessageEntity> result = new java.util.ArrayList<>();
+        List<ChatMessageEntity> result = new ArrayList<>();
         int currentTokens = 0;
-        
-        // 从最新消息往旧消息遍历（recent 列表现在是正序，所以从后往前）
         for (int i = recent.size() - 1; i >= 0; i--) {
             ChatMessageEntity msg = recent.get(i);
-            int tokens = msg.getTokenCount() != null ? msg.getTokenCount() : 0;
-            
-            // 只要不是空结果，且加上当前消息的 token 后超过预算，就停止
+            int tokens = msg.getTokenCount() != null && msg.getTokenCount() > 0
+                    ? msg.getTokenCount()
+                    : estimateTokens(msg.getContent());
             if (currentTokens + tokens > tokenBudget && !result.isEmpty()) {
                 break;
             }
-            
-            result.add(0, msg); // 每次插到头部，保持正序
+            result.add(0, msg);
             currentTokens += tokens;
         }
-        
+
         return result;
     }
 
@@ -130,5 +140,23 @@ public class ChatHistoryRepository implements IChatHistoryRepository {
                 .content(po.getContent())
                 .timestamp(po.getCreatedAt() != null ? po.getCreatedAt().getTime() : System.currentTimeMillis())
                 .build()).collect(Collectors.toList());
+    }
+
+    private boolean shouldExpandHistory(List<ChatMessageEntity> recent, int tokenBudget, int currentLimit) {
+        if (recent.isEmpty() || recent.size() < currentLimit || currentLimit >= 2000) {
+            return false;
+        }
+
+        int totalTokens = 0;
+        for (ChatMessageEntity message : recent) {
+            totalTokens += message.getTokenCount() != null && message.getTokenCount() > 0
+                    ? message.getTokenCount()
+                    : estimateTokens(message.getContent());
+        }
+        return totalTokens < tokenBudget;
+    }
+
+    private int estimateTokens(String content) {
+        return content == null ? 0 : Math.max(1, content.length() / 2);
     }
 }

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.stackssh.infrastructure.dao.IConversationRoundTraceDao">
+
+    <resultMap id="conversationRoundTraceMap" type="cn.stackssh.infrastructure.dao.po.ConversationRoundTracePO">
+        <id column="id" property="id"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="user_id" property="userId"/>
+        <result column="agent_id" property="agentId"/>
+        <result column="turn_number" property="turnNumber"/>
+        <result column="current_intent" property="currentIntent"/>
+        <result column="enhancement_cache_hit" property="enhancementCacheHit"/>
+        <result column="enhancement_cache_reason" property="enhancementCacheReason"/>
+        <result column="raw_user_message" property="rawUserMessage"/>
+        <result column="assistant_message" property="assistantMessage"/>
+        <result column="tool_summary" property="toolSummary"/>
+        <result column="success" property="success"/>
+        <result column="error_message" property="errorMessage"/>
+        <result column="total_steps" property="totalSteps"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="cn.stackssh.infrastructure.dao.po.ConversationRoundTracePO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO chat_session_round_trace (
+            session_id, user_id, agent_id, turn_number, current_intent,
+            enhancement_cache_hit, enhancement_cache_reason,
+            raw_user_message, assistant_message, tool_summary,
+            success, error_message, total_steps, created_at
+        ) VALUES (
+            #{sessionId}, #{userId}, #{agentId}, #{turnNumber}, #{currentIntent},
+            #{enhancementCacheHit}, #{enhancementCacheReason},
+            #{rawUserMessage}, #{assistantMessage}, #{toolSummary},
+            #{success}, #{errorMessage}, #{totalSteps}, now()
+        )
+    </insert>
+
+    <select id="queryRecentBySessionId" resultMap="conversationRoundTraceMap">
+        SELECT id, session_id, user_id, agent_id, turn_number, current_intent,
+               enhancement_cache_hit, enhancement_cache_reason,
+               raw_user_message, assistant_message, tool_summary,
+               success, error_message, total_steps, created_at
+        FROM chat_session_round_trace
+        WHERE session_id = #{sessionId}
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

@@ -5,6 +5,7 @@ import cn.stackssh.api.dto.ReActEventDTO;
 import cn.stackssh.api.dto.ReActResultDTO;
 import cn.stackssh.cases.react.AbstractAIAgentReActSupport;
 import cn.stackssh.cases.react.factory.DefaultReActFactory;
+import cn.stackssh.domain.agent.service.armory.matter.tools.SshExecuteAdkTool;
 import cn.bugstack.wrench.design.framework.tree.StrategyHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -114,6 +115,7 @@ public class UserFeedbackNode extends AbstractAIAgentReActSupport {
             String sessionId = dynamicContext.getSessionId();
             if (sessionId != null) {
                 unbindTerminalSession(sessionId);
+                SshExecuteAdkTool.clearTerminalSession(sessionId);
             }
 
             // 清除 ThreadLocal

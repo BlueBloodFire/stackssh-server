@@ -1,27 +1,14 @@
 package cn.stackssh.domain.agent.service.prompt;
 
-import cn.stackssh.domain.agent.model.valobj.enhance.SearchContext;
+import cn.stackssh.domain.agent.model.valobj.context.PromptEnvelopeVO;
 import cn.stackssh.domain.agent.model.valobj.prompt.PromptContextVO;
-import cn.stackssh.domain.agent.service.IChatContextService;
 import cn.stackssh.domain.agent.service.IPromptService;
 import cn.stackssh.domain.agent.service.prompt.dynamic.DynamicPromptBuilder;
 import cn.stackssh.domain.agent.service.prompt.dynamic.MilestoneTracker;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
-import java.util.List;
-import java.util.Map;
-
-/**
- * 提示词服务
- * <p>
- * 组合 DynamicPromptBuilder、MilestoneTracker、IChatContextService，
- * 向 case 层提供统一的提示词领域能力。
- *
- * @author wangjin
- * 2026/5/5 22:18
- */
 @Slf4j
 @Service
 public class PromptService implements IPromptService {
@@ -32,37 +19,28 @@ public class PromptService implements IPromptService {
     @Resource
     private MilestoneTracker milestoneTracker;
 
-    @Resource
-    private IChatContextService chatContextService;
-
     @Override
     public void detectAndRecordMilestone(String sessionId, String role, String content) {
         milestoneTracker.detectAndRecord(sessionId, role, content);
     }
 
     @Override
-    public String buildEnrichedMessage(String userMessage, String sessionId, String terminalSessionId,
-                                       List<String> recentCommands, List<Map<String, Object>> messageHistory,
-                                       SearchContext searchContext) {
-        // 1. 通过 ChatContextService 采集上下文
-        PromptContextVO promptContextVO = chatContextService.buildPromptContext(sessionId, "userId_placeholder", terminalSessionId, messageHistory);
-
-        // 追加来自 Case 层的 recentCommands
-        promptContextVO.setRecentCommands(recentCommands);
-
-        // Phase 4: 注入意图增强搜索上下文
-        if (searchContext != null && !searchContext.isEmpty()) {
-            promptContextVO.setSearchContext(searchContext);
-        }
-
-        // 2. 生成消息前缀
+    public String buildFinalUserMessage(PromptEnvelopeVO envelope, PromptContextVO promptContextVO) {
         String prefix = dynamicPromptBuilder.buildMessagePrefix(promptContextVO);
+        StringBuilder sb = new StringBuilder();
 
-        if (prefix.isEmpty()) {
-            return userMessage;
+        if (prefix != null && !prefix.isBlank()) {
+            sb.append(prefix).append("\n---\n");
         }
 
-        return prefix + "\n---\n" + userMessage;
+        if (envelope.getRagChunks() != null && !envelope.getRagChunks().isEmpty()) {
+            sb.append("[知识库信息]\n")
+                    .append(String.join("\n---\n", envelope.getRagChunks()))
+                    .append("\n---\n");
+        }
+
+        sb.append(envelope.getRawUserMessage());
+        return sb.toString();
     }
 
     @Override

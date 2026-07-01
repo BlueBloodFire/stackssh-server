@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS `chat_session_round_trace` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `session_id` varchar(64) NOT NULL COMMENT '会话ID',
+  `user_id` varchar(64) NOT NULL COMMENT '用户ID',
+  `agent_id` varchar(64) NOT NULL COMMENT '智能体ID',
+  `turn_number` int NOT NULL COMMENT '轮次序号',
+  `current_intent` varchar(100) DEFAULT NULL COMMENT '当前意图',
+  `enhancement_cache_hit` tinyint(1) DEFAULT NULL COMMENT '增强缓存是否命中',
+  `enhancement_cache_reason` varchar(64) DEFAULT NULL COMMENT '增强缓存命中/未命中原因',
+  `raw_user_message` text COMMENT '原始用户消息',
+  `assistant_message` longtext COMMENT '本轮助手消息',
+  `tool_summary` text COMMENT '本轮完成后的工具摘要',
+  `success` tinyint(1) NOT NULL DEFAULT '1' COMMENT '本轮是否成功',
+  `error_message` text COMMENT '失败原因',
+  `total_steps` int DEFAULT NULL COMMENT '累计步数',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_session_turn` (`session_id`,`turn_number`),
+  KEY `idx_session_created` (`session_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='会话轮次诊断轨迹';

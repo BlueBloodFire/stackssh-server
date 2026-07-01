@@ -1,6 +1,8 @@
 package cn.stackssh.trigger.http;
 
 import cn.stackssh.api.ISshFileService;
+import cn.stackssh.api.dto.AccessTicketRequestDTO;
+import cn.stackssh.api.dto.AccessTicketResponseDTO;
 import cn.stackssh.api.dto.SshFileContentResponseDTO;
 import cn.stackssh.api.dto.SshFileEntryDTO;
 import cn.stackssh.api.dto.SshFileTreeResponseDTO;
@@ -9,8 +11,11 @@ import cn.stackssh.domain.ssh.model.entity.SshFileContentEntity;
 import cn.stackssh.domain.ssh.model.entity.SshFileEntryEntity;
 import cn.stackssh.domain.ssh.model.entity.SshFileTreeEntity;
 import cn.stackssh.domain.ssh.service.ISshFileDomainService;
+import cn.stackssh.trigger.support.CurrentUserSupport;
+import cn.stackssh.trigger.support.EphemeralAccessTicketService;
 import cn.stackssh.types.enums.ResponseCode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,22 +44,24 @@ public class SshFileController implements ISshFileService {
     @Resource
     private ISshFileDomainService sshFileDomainService;
 
+    @Resource
+    private CurrentUserSupport currentUserSupport;
+
+    @Resource
+    private EphemeralAccessTicketService accessTicketService;
+
     @RequestMapping(value = "tree", method = RequestMethod.GET)
     @Override
     public Response<SshFileTreeResponseDTO> tree(@RequestParam("connectionId") String connectionId,
                                                  @RequestParam(value = "path", required = false) String path) {
         try {
-            SshFileTreeEntity entity = sshFileDomainService.tree(connectionId, path);
-            return Response.<SshFileTreeResponseDTO>builder()
-                    .code(ResponseCode.SUCCESS.getCode()).info(ResponseCode.SUCCESS.getInfo())
-                    .data(toTreeDTO(entity)).build();
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return Response.<SshFileTreeResponseDTO>builder()
-                    .code(ResponseCode.ILLEGAL_PARAMETER.getCode()).info(e.getMessage()).build();
+            currentUserSupport.requireOwnedConnection(connectionId);
+            return success(toTreeDTO(sshFileDomainService.tree(connectionId, path)));
+        } catch (IllegalArgumentException | IllegalStateException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
             log.error("查询目录异常 connectionId={} path={}", connectionId, path, e);
-            return Response.<SshFileTreeResponseDTO>builder()
-                    .code(ResponseCode.UN_ERROR.getCode()).info("查询目录失败: " + e.getMessage()).build();
+            return error("查询目录失败: " + e.getMessage());
         }
     }
 
@@ -63,17 +70,13 @@ public class SshFileController implements ISshFileService {
     public Response<SshFileContentResponseDTO> content(@RequestParam("connectionId") String connectionId,
                                                        @RequestParam("path") String path) {
         try {
-            SshFileContentEntity entity = sshFileDomainService.content(connectionId, path);
-            return Response.<SshFileContentResponseDTO>builder()
-                    .code(ResponseCode.SUCCESS.getCode()).info(ResponseCode.SUCCESS.getInfo())
-                    .data(toContentDTO(entity)).build();
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return Response.<SshFileContentResponseDTO>builder()
-                    .code(ResponseCode.ILLEGAL_PARAMETER.getCode()).info(e.getMessage()).build();
+            currentUserSupport.requireOwnedConnection(connectionId);
+            return success(toContentDTO(sshFileDomainService.content(connectionId, path)));
+        } catch (IllegalArgumentException | IllegalStateException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
             log.error("读取文件异常 connectionId={} path={}", connectionId, path, e);
-            return Response.<SshFileContentResponseDTO>builder()
-                    .code(ResponseCode.UN_ERROR.getCode()).info("读取文件失败: " + e.getMessage()).build();
+            return error("读取文件失败: " + e.getMessage());
         }
     }
 
@@ -83,17 +86,13 @@ public class SshFileController implements ISshFileService {
                                                             @RequestParam(value = "offset", required = false) Long offset,
                                                             @RequestParam(value = "limit", required = false) Integer limit) {
         try {
-            SshFileContentEntity entity = sshFileDomainService.content(connectionId, path, offset, limit);
-            return Response.<SshFileContentResponseDTO>builder()
-                    .code(ResponseCode.SUCCESS.getCode()).info(ResponseCode.SUCCESS.getInfo())
-                    .data(toContentDTO(entity)).build();
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return Response.<SshFileContentResponseDTO>builder()
-                    .code(ResponseCode.ILLEGAL_PARAMETER.getCode()).info(e.getMessage()).build();
+            currentUserSupport.requireOwnedConnection(connectionId);
+            return success(toContentDTO(sshFileDomainService.content(connectionId, path, offset, limit)));
+        } catch (IllegalArgumentException | IllegalStateException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
             log.error("分片读取文件异常 connectionId={} path={} offset={}", connectionId, path, offset, e);
-            return Response.<SshFileContentResponseDTO>builder()
-                    .code(ResponseCode.UN_ERROR.getCode()).info("读取文件失败: " + e.getMessage()).build();
+            return error("读取文件失败: " + e.getMessage());
         }
     }
 
@@ -102,13 +101,14 @@ public class SshFileController implements ISshFileService {
                                      @RequestParam("path") String path,
                                      @RequestParam(value = "sudo", defaultValue = "false") boolean sudo) {
         try {
+            currentUserSupport.requireOwnedConnection(connectionId);
             sshFileDomainService.createFile(connectionId, path, sudo);
-            return Response.<Void>builder().code(ResponseCode.SUCCESS.getCode()).info("创建文件成功").build();
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return Response.<Void>builder().code(ResponseCode.ILLEGAL_PARAMETER.getCode()).info(e.getMessage()).build();
+            return success(null, "创建文件成功");
+        } catch (IllegalArgumentException | IllegalStateException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
             log.error("创建文件异常 connectionId={} path={}", connectionId, path, e);
-            return Response.<Void>builder().code(ResponseCode.UN_ERROR.getCode()).info("创建文件失败: " + e.getMessage()).build();
+            return error("创建文件失败: " + e.getMessage());
         }
     }
 
@@ -117,13 +117,14 @@ public class SshFileController implements ISshFileService {
                                           @RequestParam("path") String path,
                                           @RequestParam(value = "sudo", defaultValue = "false") boolean sudo) {
         try {
+            currentUserSupport.requireOwnedConnection(connectionId);
             sshFileDomainService.createDirectory(connectionId, path, sudo);
-            return Response.<Void>builder().code(ResponseCode.SUCCESS.getCode()).info("创建目录成功").build();
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return Response.<Void>builder().code(ResponseCode.ILLEGAL_PARAMETER.getCode()).info(e.getMessage()).build();
+            return success(null, "创建目录成功");
+        } catch (IllegalArgumentException | IllegalStateException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
             log.error("创建目录异常 connectionId={} path={}", connectionId, path, e);
-            return Response.<Void>builder().code(ResponseCode.UN_ERROR.getCode()).info("创建目录失败: " + e.getMessage()).build();
+            return error("创建目录失败: " + e.getMessage());
         }
     }
 
@@ -133,13 +134,14 @@ public class SshFileController implements ISshFileService {
                                  @RequestParam("newPath") String newPath,
                                  @RequestParam(value = "sudo", defaultValue = "false") boolean sudo) {
         try {
+            currentUserSupport.requireOwnedConnection(connectionId);
             sshFileDomainService.rename(connectionId, oldPath, newPath, sudo);
-            return Response.<Void>builder().code(ResponseCode.SUCCESS.getCode()).info("重命名成功").build();
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return Response.<Void>builder().code(ResponseCode.ILLEGAL_PARAMETER.getCode()).info(e.getMessage()).build();
+            return success(null, "重命名成功");
+        } catch (IllegalArgumentException | IllegalStateException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
             log.error("重命名异常 connectionId={} oldPath={} newPath={}", connectionId, oldPath, newPath, e);
-            return Response.<Void>builder().code(ResponseCode.UN_ERROR.getCode()).info("重命名失败: " + e.getMessage()).build();
+            return error("重命名失败: " + e.getMessage());
         }
     }
 
@@ -148,13 +150,14 @@ public class SshFileController implements ISshFileService {
                                  @RequestParam("path") String path,
                                  @RequestParam(value = "sudo", defaultValue = "false") boolean sudo) {
         try {
+            currentUserSupport.requireOwnedConnection(connectionId);
             sshFileDomainService.delete(connectionId, path, sudo);
-            return Response.<Void>builder().code(ResponseCode.SUCCESS.getCode()).info("删除成功").build();
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return Response.<Void>builder().code(ResponseCode.ILLEGAL_PARAMETER.getCode()).info(e.getMessage()).build();
+            return success(null, "删除成功");
+        } catch (IllegalArgumentException | IllegalStateException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
             log.error("删除异常 connectionId={} path={}", connectionId, path, e);
-            return Response.<Void>builder().code(ResponseCode.UN_ERROR.getCode()).info("删除失败: " + e.getMessage()).build();
+            return error("删除失败: " + e.getMessage());
         }
     }
 
@@ -164,14 +167,14 @@ public class SshFileController implements ISshFileService {
                                       @RequestParam(value = "sudo", defaultValue = "false") boolean sudo,
                                       @RequestBody Map<String, String> body) {
         try {
-            String content = body.getOrDefault("content", "");
-            sshFileDomainService.saveFile(connectionId, path, content, sudo);
-            return Response.<Void>builder().code(ResponseCode.SUCCESS.getCode()).info("保存文件成功").build();
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return Response.<Void>builder().code(ResponseCode.ILLEGAL_PARAMETER.getCode()).info(e.getMessage()).build();
+            currentUserSupport.requireOwnedConnection(connectionId);
+            sshFileDomainService.saveFile(connectionId, path, body.getOrDefault("content", ""), sudo);
+            return success(null, "保存文件成功");
+        } catch (IllegalArgumentException | IllegalStateException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
             log.error("保存文件异常 connectionId={} path={}", connectionId, path, e);
-            return Response.<Void>builder().code(ResponseCode.UN_ERROR.getCode()).info("保存文件失败: " + e.getMessage()).build();
+            return error("保存文件失败: " + e.getMessage());
         }
     }
 
@@ -180,21 +183,43 @@ public class SshFileController implements ISshFileService {
                                  @RequestParam("path") String path,
                                  @RequestParam("file") MultipartFile file) {
         try (InputStream inputStream = file.getInputStream()) {
+            currentUserSupport.requireOwnedConnection(connectionId);
             sshFileDomainService.uploadFile(connectionId, path, inputStream);
-            return Response.<Void>builder().code(ResponseCode.SUCCESS.getCode()).info("上传文件成功").build();
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return Response.<Void>builder().code(ResponseCode.ILLEGAL_PARAMETER.getCode()).info(e.getMessage()).build();
+            return success(null, "上传文件成功");
+        } catch (IllegalArgumentException | IllegalStateException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
             log.error("上传文件异常 connectionId={} path={}", connectionId, path, e);
-            return Response.<Void>builder().code(ResponseCode.UN_ERROR.getCode()).info("上传文件失败: " + e.getMessage()).build();
+            return error("上传文件失败: " + e.getMessage());
+        }
+    }
+
+    @RequestMapping(value = "download-ticket", method = RequestMethod.POST)
+    public Response<AccessTicketResponseDTO> issueDownloadTicket(@RequestBody AccessTicketRequestDTO requestDTO) {
+        try {
+            String currentUserId = currentUserSupport.requireCurrentUserId();
+            currentUserSupport.requireOwnedConnection(requestDTO.getConnectionId());
+            EphemeralAccessTicketService.TicketRecord record =
+                    accessTicketService.issueDownloadTicket(currentUserId, requestDTO.getConnectionId(), requestDTO.getPath());
+            return success(AccessTicketResponseDTO.builder()
+                    .ticket(record.getTicket())
+                    .expiresInSeconds(60L)
+                    .build());
+        } catch (IllegalArgumentException | IllegalStateException | AccessDeniedException e) {
+            return illegal(e.getMessage());
+        } catch (Exception e) {
+            log.error("签发下载票据失败 connectionId={} path={}", requestDTO.getConnectionId(), requestDTO.getPath(), e);
+            return error("签发下载票据失败: " + e.getMessage());
         }
     }
 
     @RequestMapping(value = "download", method = RequestMethod.GET)
     public void download(@RequestParam("connectionId") String connectionId,
                          @RequestParam("path") String path,
+                         @RequestParam("ticket") String ticket,
                          HttpServletResponse response) {
         try {
+            accessTicketService.consumeDownloadTicket(ticket, connectionId, path);
             String fileName = path.substring(path.lastIndexOf('/') + 1);
             response.setContentType("application/octet-stream");
             response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode(fileName, "UTF-8"));
@@ -203,37 +228,72 @@ public class SshFileController implements ISshFileService {
             }
         } catch (Exception e) {
             log.error("下载文件异常 connectionId={} path={}", connectionId, path, e);
-            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         }
     }
-
-    // ===== 转换方法 =====
 
     private static SshFileTreeResponseDTO toTreeDTO(SshFileTreeEntity entity) {
         List<SshFileEntryDTO> items = entity.getItems() == null
                 ? Collections.emptyList()
                 : entity.getItems().stream().map(SshFileController::toEntryDTO).collect(Collectors.toList());
         return SshFileTreeResponseDTO.builder()
-                .rootPath(entity.getRootPath()).homePath(entity.getHomePath())
-                .currentPath(entity.getCurrentPath()).parentPath(entity.getParentPath())
-                .items(items).build();
+                .rootPath(entity.getRootPath())
+                .homePath(entity.getHomePath())
+                .currentPath(entity.getCurrentPath())
+                .parentPath(entity.getParentPath())
+                .items(items)
+                .build();
     }
 
     private static SshFileEntryDTO toEntryDTO(SshFileEntryEntity item) {
         return SshFileEntryDTO.builder()
-                .name(item.getName()).path(item.getPath()).directory(item.isDirectory())
-                .size(item.getSize()).modifiedAt(item.getModifiedAt()).build();
+                .name(item.getName())
+                .path(item.getPath())
+                .directory(item.isDirectory())
+                .size(item.getSize())
+                .modifiedAt(item.getModifiedAt())
+                .build();
     }
 
     private static SshFileContentResponseDTO toContentDTO(SshFileContentEntity entity) {
         return SshFileContentResponseDTO.builder()
-                .path(entity.getPath()).name(entity.getName()).charset(entity.getCharset())
-                .size(entity.getSize()).binary(entity.isBinary())
+                .path(entity.getPath())
+                .name(entity.getName())
+                .charset(entity.getCharset())
+                .size(entity.getSize())
+                .binary(entity.isBinary())
                 .truncated(entity.isTruncated())
                 .offset(entity.getOffset())
                 .remaining(entity.getOffset() != null && entity.getSize() != null
                         ? Math.max(0, entity.getSize() - entity.getOffset() - entity.getContent().getBytes(StandardCharsets.UTF_8).length)
                         : null)
-                .content(entity.getContent()).build();
+                .content(entity.getContent())
+                .build();
+    }
+
+    private <T> Response<T> success(T data) {
+        return success(data, ResponseCode.SUCCESS.getInfo());
+    }
+
+    private <T> Response<T> success(T data, String info) {
+        return Response.<T>builder()
+                .code(ResponseCode.SUCCESS.getCode())
+                .info(info)
+                .data(data)
+                .build();
+    }
+
+    private <T> Response<T> illegal(String message) {
+        return Response.<T>builder()
+                .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
+                .info(message)
+                .build();
+    }
+
+    private <T> Response<T> error(String message) {
+        return Response.<T>builder()
+                .code(ResponseCode.UN_ERROR.getCode())
+                .info(message)
+                .build();
     }
 }

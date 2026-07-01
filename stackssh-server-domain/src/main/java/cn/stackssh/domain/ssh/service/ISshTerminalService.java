@@ -18,7 +18,7 @@ public interface ISshTerminalService {
      * @param rows          终端行数
      * @return 终端会话实体
      */
-    TerminalSessionEntity openTerminal(String connectionId, int cols, int rows);
+    TerminalSessionEntity openTerminal(String connectionId, int cols, int rows, String ownerUserId);
 
     /**
      * 执行命令并返回输出
@@ -45,6 +45,8 @@ public interface ISshTerminalService {
      * @return 终端会话实体
      */
     TerminalSessionEntity getTerminalSession(String sessionId);
+
+    boolean isSessionOwner(String sessionId, String ownerUserId);
 
     /**
      * 关闭终端会话
@@ -76,6 +78,10 @@ public interface ISshTerminalService {
      * @param input     原始输入数据
      */
     void writeTerminal(String sessionId, String input);
+
+    java.util.List<TerminalSessionEntity> listActiveSessions(String connectionId, String ownerUserId);
+
+    void approveDangerousCommand(String sessionId, String command);
 
     /**
      * 开启终端录制

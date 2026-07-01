@@ -9,20 +9,22 @@ import cn.stackssh.domain.ssh.model.entity.SshConnectionEntity;
 import cn.stackssh.domain.ssh.model.valobj.AuthTypeEnum;
 import cn.stackssh.domain.ssh.model.valobj.ConnectionStatusEnum;
 import cn.stackssh.domain.ssh.service.ISshConnectionDomainService;
+import cn.stackssh.trigger.support.CurrentUserSupport;
 import cn.stackssh.types.enums.ResponseCode;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * SSH连接管理 HTTP控制器
- *
- * @author waissh dev
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/ssh")
@@ -34,34 +36,23 @@ public class SshConnectionController implements ISshConnectionService {
     @Resource
     private ISshConnectionDomainService sshConnectionDomainService;
 
+    @Resource
+    private CurrentUserSupport currentUserSupport;
+
     @RequestMapping(value = "create_connection", method = RequestMethod.POST)
     @Override
     public Response<SshConnectionResponseDTO> createConnection(@RequestBody SshConnectionRequestDTO requestDTO) {
         try {
-            log.info("创建SSH连接 name={} host={}", requestDTO.getConnectionName(), requestDTO.getHost());
-
-            SshConnectionEntity entity = toEntity(requestDTO);
+            String currentUserId = currentUserSupport.requireCurrentUserId();
+            SshConnectionEntity entity = toEntity(requestDTO, currentUserId);
             SshConnectionConfigEntity configEntity = toConfigEntity(requestDTO);
-
             sshConnectionDomainService.createConnection(entity, configEntity);
-
-            return Response.<SshConnectionResponseDTO>builder()
-                    .code(ResponseCode.SUCCESS.getCode())
-                    .info(ResponseCode.SUCCESS.getInfo())
-                    .data(toResponseDTO(entity))
-                    .build();
-        } catch (IllegalArgumentException e) {
-            log.warn("创建SSH连接参数错误: {}", e.getMessage());
-            return Response.<SshConnectionResponseDTO>builder()
-                    .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
-                    .info(e.getMessage())
-                    .build();
+            return success(toResponseDTO(entity));
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
             log.error("创建SSH连接失败", e);
-            return Response.<SshConnectionResponseDTO>builder()
-                    .code(ResponseCode.UN_ERROR.getCode())
-                    .info(ResponseCode.UN_ERROR.getInfo())
-                    .build();
+            return error(ResponseCode.UN_ERROR.getInfo());
         }
     }
 
@@ -69,33 +60,16 @@ public class SshConnectionController implements ISshConnectionService {
     @Override
     public Response<SshConnectionResponseDTO> updateConnection(@RequestBody SshConnectionRequestDTO requestDTO) {
         try {
-            log.info("更新SSH连接 connectionId={}", requestDTO.getConnectionId());
-
-            SshConnectionEntity entity = toEntity(requestDTO);
-            SshConnectionConfigEntity configEntity = toConfigEntity(requestDTO);
-
-            sshConnectionDomainService.updateConnection(entity, configEntity);
-
-            // 查询更新后的完整数据返回
-            SshConnectionEntity updated = sshConnectionDomainService.getConnection(entity.getConnectionId());
-
-            return Response.<SshConnectionResponseDTO>builder()
-                    .code(ResponseCode.SUCCESS.getCode())
-                    .info(ResponseCode.SUCCESS.getInfo())
-                    .data(toResponseDTO(updated))
-                    .build();
-        } catch (IllegalArgumentException e) {
-            log.warn("更新SSH连接参数错误: {}", e.getMessage());
-            return Response.<SshConnectionResponseDTO>builder()
-                    .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
-                    .info(e.getMessage())
-                    .build();
+            String currentUserId = currentUserSupport.requireCurrentUserId();
+            currentUserSupport.requireOwnedConnection(requestDTO.getConnectionId());
+            SshConnectionEntity entity = toEntity(requestDTO, currentUserId);
+            sshConnectionDomainService.updateConnection(entity, toConfigEntity(requestDTO));
+            return success(toResponseDTO(sshConnectionDomainService.getConnection(entity.getConnectionId())));
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
             log.error("更新SSH连接失败 connectionId={}", requestDTO.getConnectionId(), e);
-            return Response.<SshConnectionResponseDTO>builder()
-                    .code(ResponseCode.UN_ERROR.getCode())
-                    .info(ResponseCode.UN_ERROR.getInfo())
-                    .build();
+            return error(ResponseCode.UN_ERROR.getInfo());
         }
     }
 
@@ -103,25 +77,14 @@ public class SshConnectionController implements ISshConnectionService {
     @Override
     public Response<Void> deleteConnection(@RequestParam("connectionId") String connectionId) {
         try {
-            log.info("删除SSH连接 connectionId={}", connectionId);
+            currentUserSupport.requireOwnedConnection(connectionId);
             sshConnectionDomainService.deleteConnection(connectionId);
-
-            return Response.<Void>builder()
-                    .code(ResponseCode.SUCCESS.getCode())
-                    .info(ResponseCode.SUCCESS.getInfo())
-                    .build();
-        } catch (IllegalArgumentException e) {
-            log.warn("删除SSH连接参数错误: {}", e.getMessage());
-            return Response.<Void>builder()
-                    .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
-                    .info(e.getMessage())
-                    .build();
+            return success(null);
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
             log.error("删除SSH连接失败 connectionId={}", connectionId, e);
-            return Response.<Void>builder()
-                    .code(ResponseCode.UN_ERROR.getCode())
-                    .info(ResponseCode.UN_ERROR.getInfo())
-                    .build();
+            return error(ResponseCode.UN_ERROR.getInfo());
         }
     }
 
@@ -129,27 +92,13 @@ public class SshConnectionController implements ISshConnectionService {
     @Override
     public Response<SshConnectionResponseDTO> getConnection(@RequestParam("connectionId") String connectionId) {
         try {
-            log.info("查询SSH连接 connectionId={}", connectionId);
-            SshConnectionEntity entity = sshConnectionDomainService.getConnection(connectionId);
-
-            if (entity == null) {
-                return Response.<SshConnectionResponseDTO>builder()
-                        .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
-                        .info("连接不存在")
-                        .build();
-            }
-
-            return Response.<SshConnectionResponseDTO>builder()
-                    .code(ResponseCode.SUCCESS.getCode())
-                    .info(ResponseCode.SUCCESS.getInfo())
-                    .data(toResponseDTO(entity))
-                    .build();
+            SshConnectionEntity entity = currentUserSupport.requireOwnedConnection(connectionId);
+            return success(toResponseDTO(entity));
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
             log.error("查询SSH连接失败 connectionId={}", connectionId, e);
-            return Response.<SshConnectionResponseDTO>builder()
-                    .code(ResponseCode.UN_ERROR.getCode())
-                    .info(ResponseCode.UN_ERROR.getInfo())
-                    .build();
+            return error(ResponseCode.UN_ERROR.getInfo());
         }
     }
 
@@ -157,13 +106,9 @@ public class SshConnectionController implements ISshConnectionService {
     @Override
     public Response<List<SshConnectionResponseDTO>> getConnectionList(@RequestParam(value = "userId", defaultValue = "default") String userId) {
         try {
-            log.info("查询SSH连接列表 userId={}", userId);
-            List<SshConnectionEntity> entities = sshConnectionDomainService.getConnectionList(userId);
-
-            // 同步实际的连接状态
-            List<SshConnectionResponseDTO> dtoList = entities.stream()
+            String currentUserId = currentUserSupport.requireCurrentUserId();
+            List<SshConnectionResponseDTO> dtoList = sshConnectionDomainService.getConnectionList(currentUserId).stream()
                     .map(entity -> {
-                        // 检查实际的 SSH 连接状态
                         boolean actuallyConnected = sshConnectionDomainService.isConnected(entity.getConnectionId());
                         if (actuallyConnected && entity.getStatus() != ConnectionStatusEnum.CONNECTED) {
                             entity.setStatus(ConnectionStatusEnum.CONNECTED);
@@ -173,18 +118,12 @@ public class SshConnectionController implements ISshConnectionService {
                         return toResponseDTO(entity);
                     })
                     .collect(Collectors.toList());
-
-            return Response.<List<SshConnectionResponseDTO>>builder()
-                    .code(ResponseCode.SUCCESS.getCode())
-                    .info(ResponseCode.SUCCESS.getInfo())
-                    .data(dtoList)
-                    .build();
+            return success(dtoList);
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
-            log.error("查询SSH连接列表失败 userId={}", userId, e);
-            return Response.<List<SshConnectionResponseDTO>>builder()
-                    .code(ResponseCode.UN_ERROR.getCode())
-                    .info(ResponseCode.UN_ERROR.getInfo())
-                    .build();
+            log.error("查询SSH连接列表失败", e);
+            return error(ResponseCode.UN_ERROR.getInfo());
         }
     }
 
@@ -192,32 +131,16 @@ public class SshConnectionController implements ISshConnectionService {
     @Override
     public Response<Void> connect(@RequestParam("connectionId") String connectionId) {
         try {
-            log.info("建立SSH连接 connectionId={}", connectionId);
+            currentUserSupport.requireOwnedConnection(connectionId);
             boolean success = sshConnectionDomainService.connect(connectionId);
-
-            if (success) {
-                return Response.<Void>builder()
-                        .code(ResponseCode.SUCCESS.getCode())
-                        .info("连接成功")
-                        .build();
-            } else {
-                return Response.<Void>builder()
-                        .code(ResponseCode.UN_ERROR.getCode())
-                        .info("连接失败，请检查主机地址、端口和认证信息")
-                        .build();
-            }
-        } catch (IllegalArgumentException e) {
-            log.warn("建立SSH连接参数错误: {}", e.getMessage());
-            return Response.<Void>builder()
-                    .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
-                    .info(e.getMessage())
-                    .build();
+            return success
+                    ? success(null, "连接成功")
+                    : error("连接失败，请检查主机地址、端口和认证信息");
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
             log.error("建立SSH连接失败 connectionId={}", connectionId, e);
-            return Response.<Void>builder()
-                    .code(ResponseCode.UN_ERROR.getCode())
-                    .info("连接失败: " + e.getMessage())
-                    .build();
+            return error("连接失败: " + e.getMessage());
         }
     }
 
@@ -225,25 +148,18 @@ public class SshConnectionController implements ISshConnectionService {
     @Override
     public Response<Void> disconnect(@RequestParam("connectionId") String connectionId) {
         try {
-            log.info("断开SSH连接 connectionId={}", connectionId);
+            currentUserSupport.requireOwnedConnection(connectionId);
             sshConnectionDomainService.disconnect(connectionId);
-
-            return Response.<Void>builder()
-                    .code(ResponseCode.SUCCESS.getCode())
-                    .info("已断开连接")
-                    .build();
+            return success(null, "已断开连接");
+        } catch (IllegalArgumentException | AccessDeniedException e) {
+            return illegal(e.getMessage());
         } catch (Exception e) {
             log.error("断开SSH连接失败 connectionId={}", connectionId, e);
-            return Response.<Void>builder()
-                    .code(ResponseCode.UN_ERROR.getCode())
-                    .info("断开连接失败: " + e.getMessage())
-                    .build();
+            return error("断开连接失败: " + e.getMessage());
         }
     }
 
-    // ========== DTO <-> Entity 转换 ==========
-
-    private SshConnectionEntity toEntity(SshConnectionRequestDTO dto) {
+    private SshConnectionEntity toEntity(SshConnectionRequestDTO dto, String currentUserId) {
         return SshConnectionEntity.builder()
                 .connectionId(dto.getConnectionId())
                 .connectionName(dto.getConnectionName())
@@ -253,7 +169,7 @@ public class SshConnectionController implements ISshConnectionService {
                 .authType(dto.getAuthType() != null ? AuthTypeEnum.fromCode(dto.getAuthType()) : AuthTypeEnum.PASSWORD)
                 .password(dto.getPassword())
                 .privateKey(dto.getPrivateKey())
-                .userId(dto.getUserId())
+                .userId(currentUserId)
                 .build();
     }
 
@@ -283,4 +199,29 @@ public class SshConnectionController implements ISshConnectionService {
                 .build();
     }
 
+    private <T> Response<T> success(T data) {
+        return success(data, ResponseCode.SUCCESS.getInfo());
+    }
+
+    private <T> Response<T> success(T data, String info) {
+        return Response.<T>builder()
+                .code(ResponseCode.SUCCESS.getCode())
+                .info(info)
+                .data(data)
+                .build();
+    }
+
+    private <T> Response<T> illegal(String message) {
+        return Response.<T>builder()
+                .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
+                .info(message)
+                .build();
+    }
+
+    private <T> Response<T> error(String message) {
+        return Response.<T>builder()
+                .code(ResponseCode.UN_ERROR.getCode())
+                .info(message)
+                .build();
+    }
 }

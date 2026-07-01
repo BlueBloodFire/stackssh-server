@@ -5,8 +5,10 @@ import cn.stackssh.api.dto.RecordingStopRequestDTO;
 import cn.stackssh.api.response.Response;
 import cn.stackssh.domain.ssh.model.entity.TerminalRecordingEntity;
 import cn.stackssh.domain.ssh.service.ISshTerminalService;
+import cn.stackssh.trigger.support.CurrentUserSupport;
 import cn.stackssh.types.enums.ResponseCode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -24,17 +26,22 @@ public class SshTerminalRecordingController {
     @Resource
     private ISshTerminalService sshTerminalService;
 
+    @Resource
+    private CurrentUserSupport currentUserSupport;
+
     /** 开始录制 */
     @PostMapping("/start")
     public Response<String> startRecording(@RequestBody RecordingStartRequestDTO dto) {
         try {
+            currentUserSupport.requireOwnedTerminalSession(dto.getSessionId());
+            currentUserSupport.requireOwnedConnection(dto.getConnectionId());
             String recordingId = sshTerminalService.startRecording(dto.getSessionId(), dto.getConnectionId());
             return Response.<String>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
                     .data(recordingId)
                     .build();
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException | AccessDeniedException e) {
             log.warn("开始录制失败: {}", e.getMessage());
             return Response.<String>builder()
                     .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -53,12 +60,13 @@ public class SshTerminalRecordingController {
     @PostMapping("/stop")
     public Response<Void> stopRecording(@RequestBody RecordingStopRequestDTO dto) {
         try {
+            currentUserSupport.requireOwnedTerminalSession(dto.getSessionId());
             sshTerminalService.stopRecording(dto.getSessionId(), dto.getRecordingId());
             return Response.<Void>builder()
                     .code(ResponseCode.SUCCESS.getCode())
                     .info(ResponseCode.SUCCESS.getInfo())
                     .build();
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException | AccessDeniedException e) {
             log.warn("停止录制失败: {}", e.getMessage());
             return Response.<Void>builder()
                     .code(ResponseCode.ILLEGAL_PARAMETER.getCode())
@@ -77,6 +85,7 @@ public class SshTerminalRecordingController {
     @GetMapping("/list")
     public Response<List<TerminalRecordingEntity>> listRecordings(@RequestParam("connectionId") String connectionId) {
         try {
+            currentUserSupport.requireOwnedConnection(connectionId);
             List<TerminalRecordingEntity> list = sshTerminalService.listRecordings(connectionId);
             return Response.<List<TerminalRecordingEntity>>builder()
                     .code(ResponseCode.SUCCESS.getCode())
@@ -97,6 +106,7 @@ public class SshTerminalRecordingController {
     public Response<TerminalRecordingEntity> getPlayback(@PathVariable("recordingId") String recordingId) {
         try {
             TerminalRecordingEntity entity = sshTerminalService.getRecordingPlayback(recordingId);
+            currentUserSupport.requireOwnedRecording(entity);
             if (entity == null) {
                 return Response.<TerminalRecordingEntity>builder()
                         .code(ResponseCode.ILLEGAL_PARAMETER.getCode())

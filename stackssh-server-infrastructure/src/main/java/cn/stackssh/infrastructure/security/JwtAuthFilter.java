@@ -47,11 +47,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (bearer != null && bearer.startsWith("Bearer ")) {
             return bearer.substring(7);
         }
-        // WebSocket 握手时 token 作为 query 参数传入
-        String param = request.getParameter("token");
-        if (param != null && !param.isEmpty()) {
-            return param;
-        }
         return null;
     }
 }

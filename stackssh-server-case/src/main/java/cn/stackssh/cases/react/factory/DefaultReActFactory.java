@@ -63,6 +63,8 @@ public class DefaultReActFactory {
         /** SSH 终端会话 ID */
         private String terminalSessionId;
 
+        private String resolvedUserMessage;
+
         /** SSE 事件发射器 */
         private ResponseBodyEmitter emitter;
 
@@ -77,6 +79,8 @@ public class DefaultReActFactory {
          */
         @Builder.Default
         private List<Map<String, Object>> messageHistory = new ArrayList<>();
+
+        private boolean historyLoadedFromRepository;
 
         /**
          * 当前轮次的工具调用列表
@@ -212,6 +216,7 @@ public class DefaultReActFactory {
         }
 
         public void appendUserMessage(String content) {
+            if (content == null || content.trim().isEmpty()) return;
             appendMessage(Map.of("role", "user", "content", content));
         }
 
