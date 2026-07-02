@@ -42,6 +42,14 @@ intent-ai-api:
   chat-model:
     model: ${INTENT_AI_API_CHAT_MODEL_MODEL:deepseek-v4-flash}
 
+knowledge:
+  vector-store:
+    persist-path: ${KNOWLEDGE_VECTOR_STORE_PERSIST_PATH:./data/vector-store.json}
+  embedding:
+    base-url: ${KNOWLEDGE_EMBEDDING_BASE_URL:${INTENT_AI_API_BASE_URL:https://api.deepseek.com}}
+    api-key: ${KNOWLEDGE_EMBEDDING_API_KEY:${INTENT_AI_API_API_KEY:}}
+    model: ${KNOWLEDGE_EMBEDDING_MODEL:text-embedding-3-small}
+
 mybatis:
   mapper-locations: classpath:/mybatis/mapper/*.xml
   config-location: classpath:/mybatis/config/mybatis-config.xml

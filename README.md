@@ -1,60 +1,78 @@
 # StackSSH Server
 
-`stackssh-server` is the backend of StackSSH, an AI-assisted SSH workspace for server operations.
+[中文文档](./README.zh-CN.md)
 
-It combines SSH session management, terminal execution, remote file access, AI agent orchestration, and knowledge retrieval in a single service, so risk control and operational auditing stay on the server side instead of being scattered across clients.
+`stackssh-server` is the backend service of StackSSH, an AI-assisted SSH operations workspace.
+
+It centralizes SSH execution, terminal session lifecycle, remote file access, AI agent orchestration, and knowledge retrieval on the server side, so security control and operational policy stay in one place instead of being spread across clients.
 
 ## What It Does
 
-- Manage SSH connections, sessions, and terminal lifecycle
-- Execute remote shell commands and stream terminal output
-- Browse, read, upload, and download remote files
-- Run AI agent conversations for operations and troubleshooting
+- Manage SSH connections and terminal sessions
+- Execute remote shell commands and stream output
+- Provide remote file tree, content, upload, and download APIs
+- Run AI-agent conversations for troubleshooting and operations
 - Bind AI context to a live terminal session
-- Store chat history and conversation state in MySQL
-- Support RAG-style knowledge injection for server-specific context
-- Expose HTTP and WebSocket APIs for desktop clients
+- Persist auth data, chat history, conversation state, and knowledge metadata
+- Serve HTTP, SSE, and WebSocket interfaces for desktop clients
 
 ## Product Positioning
 
-StackSSH is not just a terminal emulator.
+StackSSH is not only a remote terminal backend.
 
-It is designed as an **AI + SSH operations workbench**:
+It is designed as the execution and control plane of an **AI + SSH operations workbench**:
 
-- The **client** focuses on interaction, editing, and visualization
-- The **server** owns SSH credentials, command execution, AI orchestration, and policy control
+- The client focuses on interaction and visualization
+- The server owns credentials, execution, orchestration, and policy boundaries
 
-This architecture is better suited for team usage, controlled environments, and future audit / approval workflows.
+This architecture is better suited for production use, team collaboration, future audit workflows, and safer AI-assisted operations.
 
 ## Core Capabilities
 
-### 1. SSH Operations
+### SSH Operations
 
-- Create and manage SSH connections
-- Open terminal sessions
-- Execute commands through terminal or AI agent flow
-- Read and write terminal input/output
-- Handle remote file tree, content, upload, and download
+- Create and manage SSH connection records
+- Open terminal sessions and execute commands
+- Read and write terminal streams
+- Handle remote file browsing and file transfer
 
-### 2. AI Agent Workflow
+### AI Agent Workflow
 
-- ReAct-style multi-step execution
-- Tool-call aware streaming responses
-- Terminal-aware troubleshooting and guided operations
-- Prompt enrichment from runtime context
-- Intent recognition and context compression
+- ReAct-style multi-step conversation flow
+- Tool-call aware streaming output
+- Terminal-aware troubleshooting and guided execution
+- Prompt enrichment from runtime context and conversation state
 
-### 3. Knowledge & Context
+### Knowledge and Context
 
-- Attach operational knowledge to a server or agent
-- Retrieve relevant context before the first AI round
-- Persist session state, summaries, and round traces
+- Attach knowledge to servers or agents
+- Retrieve relevant knowledge before the first AI round
+- Persist summaries, round traces, and session state
 
-### 4. Client Integration
+### Security and Integration
 
+- JWT-based auth endpoints
 - REST APIs for auth, SSH, files, and agent config
-- SSE / streaming chat interface
-- WebSocket terminal channel
+- SSE for AI streaming
+- WebSocket for terminal interaction
+
+## Typical Use Cases
+
+- Investigate a production issue on a Linux server with AI assistance
+- Let an AI agent inspect logs, ports, services, and system health through SSH
+- Operate a remote host from a desktop client without exposing SSH credentials to every local machine
+- Attach architecture notes or runbooks to a server and inject them into AI context
+- Build a safer internal tool for DevOps, SRE, and backend teams
+
+## Why It Is Better Than a Traditional SSH Tool
+
+Traditional SSH tools usually focus on manual terminal access. StackSSH Server adds a server-side control layer.
+
+- Centralized credential and execution control instead of scattered local configuration
+- AI-assisted troubleshooting instead of pure manual command entry
+- Structured HTTP / WebSocket APIs instead of terminal-only interaction
+- Session memory and knowledge retrieval instead of stateless command history
+- Easier future extension for audit, approval, and policy enforcement
 
 ## Tech Stack
 
@@ -65,7 +83,7 @@ This architecture is better suited for team usage, controlled environments, and 
 - Flyway
 - Spring Security
 - Google ADK / Spring AI
-- WebSocket + SSE
+- SSE and WebSocket
 
 ## Project Structure
 
@@ -73,17 +91,17 @@ This architecture is better suited for team usage, controlled environments, and 
 stackssh-server-api             API DTOs and service contracts
 stackssh-server-app             Boot application, config, resources, tests
 stackssh-server-case            ReAct orchestration use cases
-stackssh-server-domain          Domain services and core business models
+stackssh-server-domain          Domain services and business models
 stackssh-server-infrastructure  MyBatis, SSH adapters, security, persistence
-stackssh-server-trigger         HTTP / WebSocket controllers
+stackssh-server-trigger         HTTP and WebSocket controllers
 stackssh-server-types           Shared enums and exceptions
 ```
 
-## Key API Areas
+## Main API Areas
 
 - Auth: login, register
-- Agent: session creation, chat streaming, model/tool config
-- SSH: connection create, connect, disconnect
+- Agent: session creation, chat streaming, model and tool config
+- SSH: create connection, connect, disconnect
 - Terminal: open, exec, write, bind agent
 - File: tree, content, upload, download
 - Knowledge: upload, list, search, delete
@@ -107,33 +125,23 @@ Default port:
 
 - `8091`
 
-Before startup, make sure:
+Before startup:
 
-- MySQL is running
-- Database `stackssh` exists
-- `application-dev.yml` and agent-related model config are filled in
+- Ensure MySQL is running
+- Create database `stackssh`
+- Fill in `application-dev.yml` and model-related config
 
 ## Recommended Pairing
 
-This repository is the backend service. For the desktop workbench, use:
+Use this service together with:
 
-- `stackssh-client`
+- [`stackssh-client`](https://github.com/BlueBloodFire/stackssh-client)
 
 Together they form the full StackSSH product:
 
 - `stackssh-server`: execution, orchestration, security boundary
 - `stackssh-client`: terminal UX, file UI, AI workspace, settings
 
-## Current Direction
-
-The project is evolving toward:
-
-- safer AI-assisted operations
-- multi-session remote collaboration
-- auditable command execution
-- richer server knowledge context
-- an IDE-like SSH experience for infrastructure work
-
 ## License
 
-No license file is currently published in this repository. If you plan to reuse or distribute it, add an explicit license first.
+No license file is currently published in this repository. Add an explicit license before redistribution or external reuse.

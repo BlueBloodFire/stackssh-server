@@ -39,6 +39,7 @@ build/
 /.idea/
 /.mvn/
 /data/
+/stackssh-server-app/data/
 
 /docs/dev-ops/log/log_error.log
 /docs/dev-ops/log/log_info.log
